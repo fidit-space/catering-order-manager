@@ -111,11 +111,13 @@ function setupProperties() {
     TELEGRAM_BOT_TOKEN: '',       // from @BotFather, e.g. 8123456789:AAF...
     TELEGRAM_OWNER_CHAT_ID: '',   // from @userinfobot, e.g. 987654321
     API_KEY: '',                  // any random word, e.g. mankada2026 (also goes in index.html)
-    WEBHOOK_SECRET: ''            // any other random word, e.g. wh-7f3k9
+    WEBHOOK_SECRET: '',           // any other random word, e.g. wh-7f3k9
+    SPREADSHEET_ID: ''            // Optional: Google Sheet ID from URL if running as Standalone Script
   };
 
+  var required = ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_OWNER_CHAT_ID', 'API_KEY', 'WEBHOOK_SECRET'];
   var missing = [];
-  Object.keys(values).forEach(function (k) {
+  required.forEach(function (k) {
     if (!values[k]) missing.push(k);
   });
   if (missing.length) {
@@ -400,18 +402,24 @@ function updateOrder_(orderId, order) {
 }
 
 function setOrderStatus_(orderId, status) {
-  var sheet = ordersSheet_();
-  var data = sheet.getDataRange().getValues();
-  for (var i = 1; i < data.length; i++) {
-    if (data[i][COL.ID] !== orderId) continue;
-    sheet.getRange(i + 1, COL.STATUS + 1).setValue(status);
-    sheet.getRange(i + 1, COL.UPDATED + 1).setValue(nowStr_());
-    if (status === 'Delivered' && !data[i][COL.DELIVERED_AT]) {
-      sheet.getRange(i + 1, COL.DELIVERED_AT + 1).setValue(nowStr_());
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = ordersSheet_();
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][COL.ID] !== orderId) continue;
+      sheet.getRange(i + 1, COL.STATUS + 1).setValue(status);
+      sheet.getRange(i + 1, COL.UPDATED + 1).setValue(nowStr_());
+      if (status === 'Delivered' && !data[i][COL.DELIVERED_AT]) {
+        sheet.getRange(i + 1, COL.DELIVERED_AT + 1).setValue(nowStr_());
+      }
+      return { status: 'success', orderId: orderId, newStatus: status };
     }
-    return { status: 'success', orderId: orderId, newStatus: status };
+    throw new Error('Order not found: ' + orderId);
+  } finally {
+    lock.releaseLock();
   }
-  throw new Error('Order not found: ' + orderId);
 }
 
 /** Moves an order one step along the kitchen pipeline. */
@@ -1160,7 +1168,11 @@ function telegramApi_(method, payload) {
 
 // ==================== SHEET ACCESS ====================
 
-function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
+function ss_() {
+  var id = props_().getProperty('SPREADSHEET_ID');
+  if (id) return SpreadsheetApp.openById(id);
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
 
 function ordersSheet_() {
   var sheet = ss_().getSheetByName(SHEETS.ORDERS);
