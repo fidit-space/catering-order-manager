@@ -214,6 +214,114 @@ function runSelfTest() {
   return summary;
 }
 
+// ==================== SHEET INTEGRITY GUARD ====================
+
+/**
+ * Simple trigger: fires whenever a person edits the spreadsheet by hand.
+ * Needs no installation — Apps Script runs any function named onEdit.
+ *
+ * WHY THIS EXISTS: the reminder engine depends on Delivery Date and Delivery
+ * Time being plain text. Sheets silently converts "2026-09-09" into a Date the
+ * moment someone retypes it, which is exactly the defect that once stopped
+ * every reminder from firing. Since the owner is *told* to edit this
+ * spreadsheet, that fix cannot be left to trust — this repairs the cell as
+ * soon as it is touched.
+ *
+ * Script-made edits do not re-trigger a simple trigger, so this cannot loop.
+ */
+function onEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    var sheet = e.range.getSheet();
+    if (sheet.getName() !== SHEETS.ORDERS) return;
+
+    var firstRow = e.range.getRow();
+    var firstCol = e.range.getColumn();
+    var lastRow = firstRow + e.range.getNumRows() - 1;
+    var lastCol = firstCol + e.range.getNumColumns() - 1;
+
+    for (var row = Math.max(firstRow, 2); row <= lastRow; row++) {
+      for (var col = firstCol; col <= lastCol; col++) {
+        repairOrderCell_(sheet, row, col);
+      }
+    }
+  } catch (err) {
+    logError_('onEdit', err);
+  }
+}
+
+/**
+ * Rewrites one cell back into the canonical text the engine expects.
+ * Returns true when it had to change something.
+ */
+function repairOrderCell_(sheet, row, col) {
+  var canonical;
+  if (col === COL.DATE + 1) canonical = toDateStr_(sheet.getRange(row, col).getValue());
+  else if (col === COL.TIME + 1) canonical = toTimeStr_(sheet.getRange(row, col).getValue());
+  else if (col === COL.PHONE + 1) canonical = normalizePhone_(sheet.getRange(row, col).getValue());
+  else return false;
+
+  var cell = sheet.getRange(row, col);
+  var current = cell.getValue();
+  cell.setNumberFormat('@');
+
+  // An unreadable value is left alone rather than silently blanked — the owner
+  // can see and correct it, and the Log records that it needs attention.
+  if (!canonical) {
+    if (current !== '' && current != null) {
+      logError_('repairOrderCell_', new Error('Row ' + row + ' column ' + col + ' is not a value I can read: "' + current + '"'));
+    }
+    return false;
+  }
+
+  if (String(current) === canonical) return false;
+  cell.setValue(canonical);
+  return true;
+}
+
+/**
+ * Maintenance: repairs every row at once. Run it from the editor if the sheet
+ * was edited before this guard existed, or after pasting rows in bulk.
+ */
+function repairAllOrderRows() {
+  var sheet = ordersSheet_();
+  var lastRow = sheet.getDataRange().getValues().length;
+  var fixed = 0;
+
+  for (var row = 2; row <= lastRow; row++) {
+    [COL.DATE + 1, COL.TIME + 1, COL.PHONE + 1].forEach(function (col) {
+      if (repairOrderCell_(sheet, row, col)) fixed++;
+    });
+  }
+  return 'Repaired ' + fixed + ' cell(s) across ' + Math.max(0, lastRow - 1) + ' order(s).';
+}
+
+/**
+ * Daily watchdog. The Log tab catches every failure, but nobody reads a
+ * spreadsheet tab — so anything new in it gets pushed to Telegram instead.
+ */
+function reportNewErrors() {
+  var sheet = logSheet_();
+  var rows = sheet.getDataRange().getValues();
+  if (rows.length <= 1) return 'log is empty';
+
+  var lastSeen = Number(props_().getProperty('LOG_ROWS_SEEN') || 1);
+  if (rows.length <= lastSeen) return 'no new errors';
+
+  var fresh = rows.slice(lastSeen);
+  props_().setProperty('LOG_ROWS_SEEN', String(rows.length));
+
+  var msg = '⚠️ <b>' + fresh.length + ' new error' + (fresh.length === 1 ? '' : 's') + ' recorded</b>\n';
+  msg += '━━━━━━━━━━━━━━━━━━━━━\n';
+  fresh.slice(0, 10).forEach(function (r) {
+    msg += '\n<b>' + esc_(r[1]) + '</b>\n<code>' + esc_(String(r[2]).substring(0, 200)) + '</code>\n';
+  });
+  if (fresh.length > 10) msg += '\n<i>…and ' + (fresh.length - 10) + ' more in the Log tab.</i>';
+
+  sendTelegram_(ownerChat_(), msg);
+  return 'reported ' + fresh.length + ' error(s)';
+}
+
 // ==================== HTTP: GET ====================
 
 function doGet(e) {
@@ -311,7 +419,7 @@ function saveOrder_(order) {
   lock.waitLock(20000);
   try {
     var sheet = ordersSheet_();
-    var orderId = makeOrderId_();
+    var orderId = makeOrderId_(existingOrderIds_(sheet));
     var items = order.itemsJson || [];
     var total = num_(order.totalAmount);
     var advance = num_(order.advancePaid);
@@ -1289,10 +1397,34 @@ function json_(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function makeOrderId_() {
+/**
+ * Builds an order id that cannot collide with one already in the sheet.
+ *
+ * A timestamp plus randomness makes a clash unlikely; checking against the
+ * ids already issued makes it impossible. Worth the certainty, because a
+ * duplicate id means "Mark Delivered" updating the wrong customer's order.
+ *
+ * @param {Object} [taken] map of ids already in use
+ */
+function makeOrderId_(taken) {
   var stamp = Utilities.formatDate(new Date(), TZ, 'yyMMdd-HHmmss');
-  var rand = Math.random().toString(36).substring(2, 5).toUpperCase();
-  return 'ORD-' + stamp + '-' + rand;
+  for (var attempt = 0; attempt < 50; attempt++) {
+    var rand = ('000' + Math.floor(Math.random() * 1679616).toString(36).toUpperCase()).slice(-4);
+    var id = 'ORD-' + stamp + '-' + rand;
+    if (!taken || !taken[id]) return id;
+  }
+  // Astronomically unlikely; fall back to something that cannot repeat.
+  return 'ORD-' + stamp + '-' + String(new Date().getTime()).slice(-6);
+}
+
+/** The ids already issued, so a new one can be checked against them. */
+function existingOrderIds_(sheet) {
+  var taken = {};
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][COL.ID]) taken[values[i][COL.ID]] = true;
+  }
+  return taken;
 }
 
 function nowStr_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm:ss'); }

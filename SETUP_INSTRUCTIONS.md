@@ -88,9 +88,18 @@ Click the ⏰ **Triggers** icon in the left sidebar, then **Add Trigger**, four 
 | `sendDailyPrepDigest` | Time-driven | Day timer | **8pm–9pm** | One prep list for tomorrow, with each dish totalled across all orders |
 | `checkUnpaidBalances` | Time-driven | Day timer | **9am–10am** | Chases delivered orders that still owe money |
 | `weeklyBackup` | Time-driven | Week timer, Monday | **6am–7am** | Emails a full CSV copy of every sheet |
+| `reportNewErrors` | Time-driven | Day timer | **7am–8am** | Pushes anything new in the Log tab to Telegram |
 
 Each order is only ever chased for payment **once**, so this cannot become a daily nag.
 The backup also lands in a Google Drive folder called *Catering Backups*.
+
+`reportNewErrors` matters more than it looks: the Log tab records every failure, but
+nobody reads a spreadsheet tab. This is what stops a problem from being silent.
+
+You do **not** need to install a trigger for `onEdit` — Apps Script runs it automatically.
+It repairs the delivery date, time and phone columns whenever someone edits them by hand,
+which is what keeps the reminders working after the sheet has been touched. If the sheet
+was edited before this existed, run `repairAllOrderRows()` once from the editor.
 
 ---
 

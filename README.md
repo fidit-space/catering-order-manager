@@ -64,6 +64,8 @@ flowchart TD
 | `backend/google_apps_script.js` | The serverless backend, pasted into Apps Script |
 | `SETUP_INSTRUCTIONS.md` | One-time setup, step by step |
 | `MENU_GUIDE.md` | How the owner changes dishes and prices himself |
+| `test/` | 141 checks, run with `node test/run.js` — no dependencies |
+| `.github/workflows/tests.yml` | Runs those checks on every push |
 | `CLAUDE_CODE_SPEC.md` | The original build specification |
 | `Catering Order Management Solutions.md` | The research that led to this architecture |
 
@@ -107,6 +109,27 @@ business is never one lost account away from losing its order history.
 
 Secrets (bot token, chat id, API key) live in Apps Script **Script Properties** — never
 in this repository.
+
+---
+
+## Working on this code
+
+```bash
+node test/run.js
+```
+
+141 checks, no `npm install`, no build step. They run on every push via GitHub
+Actions. See [`test/README.md`](test/README.md) for what each suite covers and why.
+
+Two safeguards worth knowing about:
+
+- **`onEdit`** repairs the Orders sheet whenever someone edits it by hand. The
+  reminder engine needs the delivery date and time to stay plain text, and Sheets
+  silently converts them to dates when retyped — this is the defect that once
+  stopped every reminder. Since the owner is *told* to edit the spreadsheet, the
+  fix repairs the cell rather than trusting nobody touches it.
+- **`reportNewErrors`** pushes anything new in the Log tab to Telegram, because
+  nobody reads a spreadsheet tab.
 
 ---
 
