@@ -1309,9 +1309,18 @@ function handleCallbackQuery_(query) {
       answer = 'Recorded ' + CURRENCY + ' ' + fmtMoney_(paid.collected) + ' received 💵';
       stampMessage_(query, '💵 PAID IN FULL');
 
-    } else if (data === 'list_tomorrow') {
+    } else if (data === 'cmd_today') {
+      sendDayList_(Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), 'Today');
+      answer = 'Today';
+    } else if (data === 'cmd_tomorrow' || data === 'list_tomorrow') {
       sendDayList_(Utilities.formatDate(new Date(Date.now() + 864e5), TZ, 'yyyy-MM-dd'), 'Tomorrow');
-      answer = 'Sent';
+      answer = 'Tomorrow';
+    } else if (data === 'cmd_pending') {
+      sendPendingList_();
+      answer = 'Pending';
+    } else if (data === 'cmd_money') {
+      sendMoneyList_();
+      answer = 'Balances';
     }
   } catch (err) {
     logError_('handleCallbackQuery', err);
@@ -1353,13 +1362,21 @@ function handleBotMessage_(message) {
   if (text === '/money') return sendMoneyList_();
 
   sendTelegram_(chatId,
-    '👋 <b>Catering assistant</b>\n\n' +
-    'Tap the <b>📋 New Order</b> button below to book an order.\n\n' +
-    'Or send:\n' +
-    '/today — today’s deliveries\n' +
-    '/tomorrow — tomorrow’s deliveries\n' +
-    '/pending — everything still to deliver\n' +
-    '/money — who still owes you');
+    '👋 <b>Catering Assistant</b>\n\n' +
+    'Choose an action below or tap <b>📋 New Order</b> to book an order:',
+    {
+      inline_keyboard: [
+        [{ text: '📋 Open Catering Manager', web_app: { url: 'https://fidit-space.github.io/catering-order-manager/' } }],
+        [
+          { text: '📅 Today', callback_data: 'cmd_today' },
+          { text: '📦 Tomorrow', callback_data: 'cmd_tomorrow' }
+        ],
+        [
+          { text: '⏳ Pending Orders', callback_data: 'cmd_pending' },
+          { text: '💰 Unpaid Balances', callback_data: 'cmd_money' }
+        ]
+      ]
+    });
 }
 
 function sendDayList_(dateStr, label) {

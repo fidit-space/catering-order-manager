@@ -870,15 +870,28 @@ function submitOrder() {
 
 function customerSummaryText(payload, orderId) {
   var lines = payload.itemsJson.map(function (l) {
-    return '• ' + l.name + ' — ' + l.qty + (l.unit ? ' ' + l.unit : '');
+    return '  • ' + l.name + ' — ' + l.qty + (l.unit ? ' ' + l.unit : '');
   }).join('\n');
-  return 'Order confirmation ' + orderId + '\n\n' + lines +
-    '\n\nDelivery: ' + prettyDate(payload.deliveryDate) + ' at ' + payload.deliveryTime +
-    (payload.deliveryAddress ? '\nAddress: ' + payload.deliveryAddress : '') +
-    '\n\nTotal: ' + money(payload.totalAmount) +
-    '\nAdvance paid: ' + money(payload.advancePaid) +
-    '\nBalance on delivery: ' + money(payload.balanceDue) +
-    '\n\nPlease reply to confirm these details are correct. Thank you!';
+
+  return '═══════════════════════\n' +
+    '🍗 *ROYAL CATERING SERVICES*\n' +
+    '📋 *ORDER CONFIRMATION RECEIPT*\n' +
+    '═══════════════════════\n\n' +
+    '🆔 *Order ID:* `' + orderId + '`\n' +
+    '👤 *Customer:* ' + payload.customerName + '\n' +
+    '📅 *Delivery Date:* ' + prettyDate(payload.deliveryDate) + '\n' +
+    '⏰ *Delivery Time:* ' + payload.deliveryTime + '\n' +
+    (payload.deliveryAddress ? '📍 *Delivery Address:* ' + payload.deliveryAddress + '\n' : '') +
+    (payload.specialNotes ? '📝 *Notes:* ' + payload.specialNotes + '\n' : '') +
+    '\n───────────────────────\n' +
+    '🍛 *DISHES ORDERED:*\n' + lines + '\n' +
+    '───────────────────────\n' +
+    '💵 *Total Amount:* ' + money(payload.totalAmount) + '\n' +
+    '💳 *Advance Paid:* ' + money(payload.advancePaid) + '\n' +
+    '⚠️ *Balance on Delivery:* ' + money(payload.balanceDue) + '\n' +
+    '═══════════════════════\n' +
+    '🙏 *Thank you for your order!*\n' +
+    'Please reply to this message to confirm these details.';
 }
 
 function setBusy(busy) {
