@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Catering Order Manager</title>
+  <!-- Telegram Web App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg-color: var(--tg-theme-bg-color, #f4f6f8);
+      --card-bg: var(--tg-theme-secondary-bg-color, #ffffff);
+      --text-color: var(--tg-theme-text-color, #1e293b);
+      --hint-color: var(--tg-theme-hint-color, #64748b);
+      --primary: var(--tg-theme-button-color, #0284c7);
+      --primary-text: var(--tg-theme-button-text-color, #ffffff);
+      --border-color: #e2e8f0;
+      --accent: #f59e0b;
+      --success: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      padding: 14px 14px 100px 14px;
+    }
+
+    header {
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    header p {
+      font-size: 0.82rem;
+      color: var(--hint-color);
+      margin-top: 4px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+      border: 1px solid var(--border-color);
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Category Pill Navigation */
+    .category-pills {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+      scrollbar-width: none;
+    }
+    .category-pills::-webkit-scrollbar {
+      display: none;
+    }
+
+    .pill {
+      background: #f1f5f9;
+      border: 1px solid var(--border-color);
+      color: var(--hint-color);
+      padding: 7px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .pill.active {
+      background: var(--primary);
+      color: var(--primary-text);
+      border-color: var(--primary);
+    }
+
+    /* Food Menu Items */
+    .menu-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      border-radius: 10px;
+      background: #f8fafc;
+      border: 1px solid var(--border-color);
+    }
+
+    .item-info {
+      flex: 1;
+    }
+
+    .item-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .item-unit {
+      font-size: 0.75rem;
+      color: var(--hint-color);
+    }
+
+    .qty-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .qty-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid var(--border-color);
+      background: #ffffff;
+      color: var(--primary);
+      font-weight: bold;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .qty-btn:active {
+      background: #e2e8f0;
+    }
+
+    .qty-display {
+      min-width: 28px;
+      text-align: center;
+      font-weight: 700;
+      font-size: 0.95rem;
+    }
+
+    /* Selected Order Summary Chips */
+    .selected-summary {
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-top: 10px;
+      font-size: 0.85rem;
+    }
+
+    .selected-list {
+      list-style: none;
+      margin-top: 6px;
+    }
+
+    .selected-list li {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      border-bottom: 1px dashed #d1fae5;
+    }
+
+    /* Form Fields */
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--hint-color);
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: #ffffff;
+      color: var(--text-color);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--primary);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    /* Fixed Bottom Action Bar */
+    .bottom-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--card-bg);
+      border-top: 1px solid var(--border-color);
+      padding: 12px 16px;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
+      display: flex;
+      gap: 10px;
+      z-index: 100;
+    }
+
+    .submit-btn {
+      flex: 1;
+      background: var(--primary);
+      color: var(--primary-text);
+      border: none;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .badge {
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-weight: bold;
+    }
+
+    .notice {
+      font-size: 0.75rem;
+      color: var(--hint-color);
+      text-align: center;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🍲 Catering Order Manager</h1>
+    <p>Fast mobile order booking & reminder system</p>
+  </header>
+
+  <!-- Step 1: Food Selection by Category -->
+  <section class="card">
+    <div class="card-title">
+      <span>1. Select Menu Items</span>
+      <span class="badge" id="totalItemsBadge">0 Items</span>
+    </div>
+
+    <!-- Category selector -->
+    <div class="category-pills" id="categoryPills">
+      <div class="pill active" onclick="filterCategory('Biryani')">🍛 Biryani</div>
+      <div class="pill" onclick="filterCategory('Mandhi')">🍗 Mandhi</div>
+      <div class="pill" onclick="filterCategory('Rice')">🍚 Fried Rice</div>
+      <div class="pill" onclick="filterCategory('Curry')">🍲 Curries & Gravy</div>
+      <div class="pill" onclick="filterCategory('Dessert')">🍧 Desserts</div>
+      <div class="pill" onclick="filterCategory('Custom')">✏️ Custom Item</div>
+    </div>
+
+    <!-- Menu Items List -->
+    <div class="menu-grid" id="menuItemsContainer">
+      <!-- Injected via JavaScript -->
+    </div>
+
+    <!-- Custom Menu Entry Box (for custom catering requests) -->
+    <div id="customItemBox" style="display: none; margin-top: 10px;">
+      <div class="grid-2">
+        <input type="text" id="customItemName" placeholder="Item Name (e.g. Special Dessert)" />
+        <input type="text" id="customItemQty" placeholder="Portions / Kg (e.g. 50 Pax)" />
+      </div>
+      <button type="button" class="pill" style="margin-top: 8px; width: 100%;" onclick="addCustomItem()">➕ Add Custom Item to Order</button>
+    </div>
+
+    <!-- Selected Order Items Box -->
+    <div class="selected-summary" id="selectedSummary" style="display: none;">
+      <strong>🛒 Order Summary:</strong>
+      <ul class="selected-list" id="selectedList"></ul>
+    </div>
+  </section>
+
+  <!-- Step 2: Delivery Date & Time -->
+  <section class="card">
+    <div class="card-title">
+      <span>2. Delivery Schedule & Reminder</span>
+      <span style="font-size: 1.1rem;">⏰</span>
+    </div>
+    <div class="grid-2">
+      <div class="form-group">
+        <label for="deliveryDate">Delivery Date *</label>
+        <input type="date" id="deliveryDate" required />
+      </div>
+      <div class="form-group">
+        <label for="deliveryTime">Delivery Time *</label>
+        <input type="time" id="deliveryTime" required />
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="prepStatus">Initial Status</label>
+      <select id="prepStatus">
+        <option value="Confirmed">✅ Confirmed (Need Prep)</option>
+        <option value="Tentative">⏳ Inquiry / Tentative</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- Step 3: Customer Information -->
+  <section class="card">
+    <div class="card-title">
+      <span>3. Customer Details</span>
+      <span style="font-size: 1.1rem;">👤</span>
+    </div>
+    <div class="form-group">
+      <label for="customerName">Customer Name *</label>
+      <input type="text" id="customerName" placeholder="e.g. Mohamed Rizwan" required />
+    </div>
+    <div class="form-group">
+      <label for="customerPhone">Phone / WhatsApp *</label>
+      <input type="tel" id="customerPhone" placeholder="e.g. +94 77 123 4567" required />
+    </div>
+    <div class="form-group">
+      <label for="deliveryAddress">Delivery Address / Location</label>
+      <textarea id="deliveryAddress" rows="2" placeholder="e.g. 45 Galle Road, Dehiwala (or share landmark)"></textarea>
+    </div>
+  </section>
+
+  <!-- Step 4: Pricing & Special Notes -->
+  <section class="card">
+    <div class="card-title">
+      <span>4. Payment & Special Instructions</span>
+      <span style="font-size: 1.1rem;">💵</span>
+    </div>
+    <div class="grid-2">
+      <div class="form-group">
+        <label for="totalAmount">Total Amount</label>
+        <input type="number" id="totalAmount" placeholder="0.00" />
+      </div>
+      <div class="form-group">
+        <label for="advancePaid">Advance Paid</label>
+        <input type="number" id="advancePaid" placeholder="0.00" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="specialNotes">Notes / Spice Level / Packaging</label>
+      <textarea id="specialNotes" rows="2" placeholder="e.g. Medium spice, packed in 5 large party containers, provide spoons"></textarea>
+    </div>
+  </section>
+
+  <p class="notice">Automated reminder alerts will be pushed to Telegram before delivery.</p>
+
+  <!-- Bottom Floating Action Bar -->
+  <div class="bottom-bar">
+    <button type="button" class="submit-btn" id="submitBtn" onclick="submitOrder()">
+      <span>💾 Save Order & Set Reminder</span>
+    </button>
+  </div>
+
+  <script>
+    // Configuration: Replace with your deployed Google Apps Script Web App URL
+    const APPS_SCRIPT_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbz_YOUR_SCRIPT_ID_HERE/exec";
+
+    // Initialize Telegram WebApp
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.expand();
+      tg.ready();
+    }
+
+    // Default Menu Items database
+    const MENU_ITEMS = [
+      { id: 'b1', category: 'Biryani', name: 'Chicken Dum Biryani', unit: 'Pax (Persons)' },
+      { id: 'b2', category: 'Biryani', name: 'Mutton Dum Biryani', unit: 'Pax (Persons)' },
+      { id: 'b3', category: 'Biryani', name: 'Beef Biryani', unit: 'Pax (Persons)' },
+      { id: 'b4', category: 'Biryani', name: 'Egg / Veg Biryani', unit: 'Pax (Persons)' },
+      { id: 'm1', category: 'Mandhi', name: 'Chicken Mandhi (Quarter/Half/Full)', unit: 'Packs' },
+      { id: 'm2', category: 'Mandhi', name: 'Mutton Mandhi Special', unit: 'Packs' },
+      { id: 'r1', category: 'Rice', name: 'Chicken Fried Rice', unit: 'Portions' },
+      { id: 'r2', category: 'Rice', name: 'Seafood Mixed Fried Rice', unit: 'Portions' },
+      { id: 'r3', category: 'Rice', name: 'Egg / Vegetable Fried Rice', unit: 'Portions' },
+      { id: 'c1', category: 'Curry', name: 'Butter Chicken Gravy', unit: 'Liters / Portions' },
+      { id: 'c2', category: 'Curry', name: 'Chilli Chicken Dry/Gravy', unit: 'Portions' },
+      { id: 'c3', category: 'Curry', name: 'Raita & Mint Chutney', unit: 'Bowls' },
+      { id: 'd1', category: 'Dessert', name: 'Watalappam Party Pack', unit: 'Cups / Tray' },
+      { id: 'd2', category: 'Dessert', name: 'Gulab Jamun (Catering Pack)', unit: 'Pieces' }
+    ];
+
+    // Selected order items state: { itemId: quantity }
+    const selectedQuantities = {};
+    let customItems = [];
+    let currentCategory = 'Biryani';
+
+    // Set default date to Tomorrow and time to 12:30 PM
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('deliveryDate').value = tomorrow.toISOString().split('T')[0];
+    document.getElementById('deliveryTime').value = "12:30";
+
+    function filterCategory(category) {
+      currentCategory = category;
+      document.querySelectorAll('.category-pills .pill').forEach(el => {
+        el.classList.toggle('active', el.innerText.includes(category));
+      });
+
+      const customBox = document.getElementById('customItemBox');
+      const container = document.getElementById('menuItemsContainer');
+
+      if (category === 'Custom') {
+        customBox.style.display = 'block';
+        container.style.display = 'none';
+      } else {
+        customBox.style.display = 'none';
+        container.style.display = 'grid';
+        renderMenuItems(category);
+      }
+    }
+
+    function renderMenuItems(category) {
+      const container = document.getElementById('menuItemsContainer');
+      const items = MENU_ITEMS.filter(item => item.category === category);
+      
+      container.innerHTML = items.map(item => {
+        const qty = selectedQuantities[item.id] || 0;
+        return `
+          <div class="menu-item">
+            <div class="item-info">
+              <div class="item-name">${item.name}</div>
+              <div class="item-unit">${item.unit}</div>
+            </div>
+            <div class="qty-control">
+              <button class="qty-btn" type="button" onclick="updateQty('${item.id}', -5)">-</button>
+              <div class="qty-display" id="qty_${item.id}">${qty}</div>
+              <button class="qty-btn" type="button" onclick="updateQty('${item.id}', 5)">+</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateQty(itemId, delta) {
+      const current = selectedQuantities[itemId] || 0;
+      const next = Math.max(0, current + delta);
+      selectedQuantities[itemId] = next;
+      
+      const display = document.getElementById(`qty_${itemId}`);
+      if (display) display.innerText = next;
+
+      updateOrderSummary();
+    }
+
+    function addCustomItem() {
+      const name = document.getElementById('customItemName').value.trim();
+      const qty = document.getElementById('customItemQty').value.trim();
+      if (!name || !qty) {
+        alert("Please enter both custom item name and quantity/portion.");
+        return;
+      }
+      customItems.push({ name, qty });
+      document.getElementById('customItemName').value = '';
+      document.getElementById('customItemQty').value = '';
+      updateOrderSummary();
+    }
+
+    function updateOrderSummary() {
+      const listEl = document.getElementById('selectedList');
+      const summaryBox = document.getElementById('selectedSummary');
+      const badge = document.getElementById('totalItemsBadge');
+
+      const itemsList = [];
+      let totalCount = 0;
+
+      for (const [id, qty] of Object.entries(selectedQuantities)) {
+        if (qty > 0) {
+          const item = MENU_ITEMS.find(i => i.id === id);
+          if (item) {
+            itemsList.push(`<li><span>${item.name}</span><strong>${qty} ${item.unit}</strong></li>`);
+            totalCount++;
+          }
+        }
+      }
+
+      customItems.forEach((c, idx) => {
+        itemsList.push(`<li><span>${c.name} (Custom)</span><strong>${c.qty}</strong></li>`);
+        totalCount++;
+      });
+
+      badge.innerText = `${totalCount} Item${totalCount === 1 ? '' : 's'}`;
+
+      if (itemsList.length > 0) {
+        summaryBox.style.display = 'block';
+        listEl.innerHTML = itemsList.join('');
+      } else {
+        summaryBox.style.display = 'none';
+      }
+    }
+
+    async function submitOrder() {
+      const customerName = document.getElementById('customerName').value.trim();
+      const customerPhone = document.getElementById('customerPhone').value.trim();
+      const deliveryDate = document.getElementById('deliveryDate').value;
+      const deliveryTime = document.getElementById('deliveryTime').value;
+      const deliveryAddress = document.getElementById('deliveryAddress').value.trim();
+      const prepStatus = document.getElementById('prepStatus').value;
+      const totalAmount = document.getElementById('totalAmount').value;
+      const advancePaid = document.getElementById('advancePaid').value;
+      const specialNotes = document.getElementById('specialNotes').value.trim();
+
+      // Collect food items
+      const orderedItems = [];
+      for (const [id, qty] of Object.entries(selectedQuantities)) {
+        if (qty > 0) {
+          const item = MENU_ITEMS.find(i => i.id === id);
+          orderedItems.push(`${item.name}: ${qty} ${item.unit}`);
+        }
+      }
+      customItems.forEach(c => {
+        orderedItems.push(`${c.name}: ${c.qty}`);
+      });
+
+      if (orderedItems.length === 0) {
+        alert("Please select at least one menu item (Biryani, Mandi, etc.)");
+        return;
+      }
+      if (!customerName || !customerPhone || !deliveryDate || !deliveryTime) {
+        alert("Please fill in Customer Name, Phone, Delivery Date and Delivery Time.");
+        return;
+      }
+
+      const payload = {
+        telegramUser: tg?.initDataUnsafe?.user || null,
+        order: {
+          itemsSummary: orderedItems.join("; "),
+          deliveryDate: deliveryDate,
+          deliveryTime: deliveryTime,
+          customerName: customerName,
+          customerPhone: customerPhone,
+          deliveryAddress: deliveryAddress || "Not specified",
+          prepStatus: prepStatus,
+          totalAmount: totalAmount || "0",
+          advancePaid: advancePaid || "0",
+          balanceDue: (Number(totalAmount || 0) - Number(advancePaid || 0)).toString(),
+          specialNotes: specialNotes || "-"
+        }
+      };
+
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = true;
+      submitBtn.innerText = "⏳ Saving Order...";
+
+      try {
+        // Send order to Google Apps Script WebApp
+        await fetch(APPS_SCRIPT_WEBAPP_URL, {
+          method: 'POST',
+          mode: 'no-cors', // standard for Google Apps Script Web App endpoints
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (tg) {
+          tg.showPopup({
+            title: "Order Saved!",
+            message: `Order for ${customerName} scheduled for ${deliveryDate} at ${deliveryTime}. Reminder will alert your Telegram.`,
+            buttons: [{ type: "ok" }]
+          }, () => {
+            tg.close();
+          });
+        } else {
+          alert(`Order saved successfully for ${customerName}!`);
+          location.reload();
+        }
+      } catch (err) {
+        alert("Error saving order: " + err.message);
+        submitBtn.disabled = false;
+        submitBtn.innerText = "💾 Save Order & Set Reminder";
+      }
+    }
+
+    // Initial render
+    renderMenuItems('Biryani');
+  </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Environment and Secret Files
+.env
+.env.local
+*.credentials.json
+credentials/
+
+# Node & Package Managers (if ever used)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Logs
+*.log
+npm-debug.log*
+
+# Clasp / Google Apps Script local files
+.clasp.json
+.claspignore
