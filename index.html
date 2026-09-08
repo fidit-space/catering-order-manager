@@ -4,7 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Catering Order Manager</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    try {
+      if (window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+      }
+    } catch (e) {}
+  </script>
   <style>
     :root {
       --bg: var(--tg-theme-bg-color, #f4f6f8);
@@ -386,19 +397,17 @@ var CURRENCY = "Rs.";
 /* ============================================================
    Telegram bootstrap
    ============================================================ */
-/* The Telegram SDK loads on any page, so its mere presence proves nothing.
-   Outside Telegram it reports platform "unknown" — that is the real test. */
-var tg = (function () {
-  var w = window.Telegram && window.Telegram.WebApp;
-  if (!w) return null;
-  return (w.platform && w.platform !== 'unknown') ? w : null;
-})();
-
+var tg = window.Telegram && window.Telegram.WebApp;
 if (tg) {
-  tg.ready();
-  tg.expand();
-} else {
-  document.getElementById('consoleBanner').hidden = false;
+  try {
+    tg.ready();
+    tg.expand();
+  } catch (e) {}
+}
+
+if (!tg || tg.platform === 'unknown') {
+  var b = document.getElementById('consoleBanner');
+  if (b) b.hidden = false;
 }
 
 function haptic(style) {
