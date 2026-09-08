@@ -2,628 +2,1173 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Catering Order Manager</title>
-  <!-- Telegram Web App SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --bg-color: var(--tg-theme-bg-color, #f4f6f8);
-      --card-bg: var(--tg-theme-secondary-bg-color, #ffffff);
-      --text-color: var(--tg-theme-text-color, #1e293b);
-      --hint-color: var(--tg-theme-hint-color, #64748b);
+      --bg: var(--tg-theme-bg-color, #f4f6f8);
+      --card: var(--tg-theme-secondary-bg-color, #ffffff);
+      --text: var(--tg-theme-text-color, #0f172a);
+      --hint: var(--tg-theme-hint-color, #64748b);
       --primary: var(--tg-theme-button-color, #0284c7);
       --primary-text: var(--tg-theme-button-text-color, #ffffff);
-      --border-color: #e2e8f0;
+      --border: rgba(100, 116, 139, 0.22);
+      --soft: rgba(100, 116, 139, 0.09);
       --accent: #f59e0b;
       --success: #10b981;
+      --danger: #ef4444;
+      --tap: 48px;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      -webkit-tap-highlight-color: transparent;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
     body {
-      background-color: var(--bg-color);
-      color: var(--text-color);
-      padding: 14px 14px 100px 14px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 16px;
+      padding: 12px 12px calc(150px + env(safe-area-inset-bottom)) 12px;
+      overflow-x: hidden;
     }
 
-    header {
-      margin-bottom: 16px;
-      text-align: center;
+    /* ---------- Chrome ---------- */
+    .console-banner {
+      background: #1e293b; color: #fff; border-radius: 12px;
+      padding: 10px 14px; margin-bottom: 12px; font-size: 0.85rem; text-align: center;
     }
 
-    header h1 {
-      font-size: 1.3rem;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-
-    header p {
-      font-size: 0.82rem;
-      color: var(--hint-color);
-      margin-top: 4px;
-    }
+    header { text-align: center; margin-bottom: 14px; }
+    header h1 { font-size: 1.25rem; font-weight: 800; }
+    header p { font-size: 0.8rem; color: var(--hint); margin-top: 3px; }
 
     .card {
-      background: var(--card-bg);
-      border-radius: 14px;
-      padding: 16px;
-      margin-bottom: 14px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-      border: 1px solid var(--border-color);
+      background: var(--card); border-radius: 16px; padding: 16px;
+      margin-bottom: 12px; border: 1px solid var(--border);
     }
 
     .card-title {
-      font-size: 0.95rem;
-      font-weight: 700;
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    /* Category Pill Navigation */
-    .category-pills {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding-bottom: 8px;
-      margin-bottom: 12px;
-      scrollbar-width: none;
-    }
-    .category-pills::-webkit-scrollbar {
-      display: none;
-    }
-
-    .pill {
-      background: #f1f5f9;
-      border: 1px solid var(--border-color);
-      color: var(--hint-color);
-      padding: 7px 14px;
-      border-radius: 20px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      white-space: nowrap;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .pill.active {
-      background: var(--primary);
-      color: var(--primary-text);
-      border-color: var(--primary);
-    }
-
-    /* Food Menu Items */
-    .menu-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 10px;
-    }
-
-    .menu-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px;
-      border-radius: 10px;
-      background: #f8fafc;
-      border: 1px solid var(--border-color);
-    }
-
-    .item-info {
-      flex: 1;
-    }
-
-    .item-name {
-      font-weight: 600;
-      font-size: 0.95rem;
-    }
-
-    .item-unit {
-      font-size: 0.75rem;
-      color: var(--hint-color);
-    }
-
-    .qty-control {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .qty-btn {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      border: 1px solid var(--border-color);
-      background: #ffffff;
-      color: var(--primary);
-      font-weight: bold;
-      font-size: 1.1rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-    }
-
-    .qty-btn:active {
-      background: #e2e8f0;
-    }
-
-    .qty-display {
-      min-width: 28px;
-      text-align: center;
-      font-weight: 700;
-      font-size: 0.95rem;
-    }
-
-    /* Selected Order Summary Chips */
-    .selected-summary {
-      background: #ecfdf5;
-      border: 1px solid #a7f3d0;
-      border-radius: 10px;
-      padding: 10px 12px;
-      margin-top: 10px;
-      font-size: 0.85rem;
-    }
-
-    .selected-list {
-      list-style: none;
-      margin-top: 6px;
-    }
-
-    .selected-list li {
-      display: flex;
-      justify-content: space-between;
-      padding: 3px 0;
-      border-bottom: 1px dashed #d1fae5;
-    }
-
-    /* Form Fields */
-    .form-group {
-      margin-bottom: 12px;
-    }
-
-    .form-group:last-child {
-      margin-bottom: 0;
-    }
-
-    label {
-      display: block;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--hint-color);
-      margin-bottom: 5px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    input, textarea, select {
-      width: 100%;
-      padding: 11px 12px;
-      border-radius: 8px;
-      border: 1px solid var(--border-color);
-      background: #ffffff;
-      color: var(--text-color);
-      font-size: 0.95rem;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-
-    input:focus, textarea:focus, select:focus {
-      border-color: var(--primary);
-    }
-
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    /* Fixed Bottom Action Bar */
-    .bottom-bar {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: var(--card-bg);
-      border-top: 1px solid var(--border-color);
-      padding: 12px 16px;
-      box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
-      display: flex;
-      gap: 10px;
-      z-index: 100;
-    }
-
-    .submit-btn {
-      flex: 1;
-      background: var(--primary);
-      color: var(--primary-text);
-      border: none;
-      border-radius: 12px;
-      padding: 14px;
-      font-size: 1rem;
-      font-weight: 700;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-
-    .submit-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
+      font-size: 0.95rem; font-weight: 800; margin-bottom: 14px;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
     }
 
     .badge {
-      background: var(--accent);
-      color: #fff;
-      font-size: 0.75rem;
-      padding: 3px 8px;
-      border-radius: 12px;
-      font-weight: bold;
+      background: var(--accent); color: #fff; font-size: 0.72rem;
+      padding: 4px 9px; border-radius: 12px; font-weight: 700; white-space: nowrap;
+    }
+    .badge.grey { background: var(--soft); color: var(--hint); }
+
+    /* ---------- Banners ---------- */
+    .alert {
+      border-radius: 12px; padding: 12px 14px; margin-bottom: 12px;
+      font-size: 0.86rem; display: flex; align-items: center; gap: 10px;
+    }
+    .alert.warn { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .alert.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .alert button {
+      margin-left: auto; border: none; border-radius: 8px; padding: 8px 12px;
+      font-weight: 700; background: rgba(0,0,0,0.12); color: inherit; font-size: 0.82rem;
     }
 
-    .notice {
-      font-size: 0.75rem;
-      color: var(--hint-color);
-      text-align: center;
-      margin-top: 8px;
+    /* ---------- Pills ---------- */
+    .pills { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; scrollbar-width: none; }
+    .pills::-webkit-scrollbar { display: none; }
+
+    .pill {
+      background: var(--soft); border: 1px solid transparent; color: var(--hint);
+      padding: 10px 15px; border-radius: 22px; font-size: 0.87rem; font-weight: 700;
+      white-space: nowrap; min-height: 42px; display: flex; align-items: center;
     }
+    .pill.active { background: var(--primary); color: var(--primary-text); }
+
+    /* ---------- Menu rows ---------- */
+    .menu-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .menu-item {
+      display: flex; align-items: center; gap: 10px; padding: 10px;
+      border-radius: 12px; background: var(--soft); border: 1px solid transparent;
+    }
+    .menu-item.has-qty { border-color: var(--success); background: rgba(16,185,129,0.10); }
+
+    .item-info { flex: 1 1 auto; min-width: 0; }
+    .item-name { font-weight: 700; font-size: 0.92rem; line-height: 1.25; }
+    .item-meta { font-size: 0.74rem; color: var(--hint); margin-top: 2px; }
+    .item-line-total { font-size: 0.78rem; font-weight: 700; color: var(--success); margin-top: 3px; }
+
+    .stepper { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+
+    .qty-btn {
+      flex: 0 0 var(--tap); width: var(--tap); height: var(--tap); border-radius: 50%;
+      border: 1px solid var(--border); background: var(--card); color: var(--primary);
+      font-weight: 800; font-size: 1.35rem; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .qty-btn:active { background: var(--primary); color: var(--primary-text); }
+
+    /* Must override the global `input { width: 100% }` rule below, or the
+       stepper blows the row apart on a 375px screen. */
+    .qty-value {
+      flex: 0 0 54px; width: 54px; min-width: 54px; padding: 0;
+      height: var(--tap); min-height: var(--tap);
+      border: none; background: transparent; border-radius: 0;
+      text-align: center; font-weight: 800; font-size: 1.15rem; color: var(--text);
+      font-family: inherit; -moz-appearance: textfield;
+    }
+    .qty-value::-webkit-outer-spin-button,
+    .qty-value::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+    /* ---------- Forms ---------- */
+    .form-group { margin-bottom: 12px; }
+    .form-group:last-child { margin-bottom: 0; }
+
+    label {
+      display: block; font-size: 0.74rem; font-weight: 800; color: var(--hint);
+      margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.6px;
+    }
+
+    input, textarea, select {
+      width: 100%; padding: 13px 12px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--card); color: var(--text);
+      font-size: 1rem; font-family: inherit; outline: none; min-height: var(--tap);
+    }
+    input:focus, textarea:focus, select:focus { border-color: var(--primary); }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .phone-wrap { display: flex; align-items: stretch; gap: 0; }
+    .phone-prefix {
+      display: flex; align-items: center; padding: 0 12px; font-weight: 700;
+      background: var(--soft); border: 1px solid var(--border); border-right: none;
+      border-radius: 10px 0 0 10px; color: var(--hint);
+    }
+    .phone-wrap input { border-radius: 0 10px 10px 0; }
+
+    .hint-chip {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+      background: rgba(16,185,129,0.14); color: #047857; border-radius: 10px;
+      padding: 8px 10px; font-size: 0.8rem; font-weight: 600;
+    }
+
+    /* ---------- Summary & money ---------- */
+    .summary { background: rgba(16,185,129,0.10); border: 1px solid rgba(16,185,129,0.35); border-radius: 12px; padding: 12px; margin-top: 12px; }
+    .summary ul { list-style: none; margin-top: 8px; }
+    .summary li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: 0.86rem; border-bottom: 1px dashed rgba(16,185,129,0.3); }
+    .summary li:last-child { border-bottom: none; }
+    .summary li .del { color: var(--danger); font-weight: 800; padding: 0 6px; }
+
+    .money-row { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; font-size: 0.92rem; }
+    .money-row + .money-row { border-top: 1px solid var(--border); }
+    .money-row.big { font-size: 1.12rem; font-weight: 800; }
+    .money-row.big span:last-child { color: var(--danger); }
+
+    /* ---------- Order cards ---------- */
+    .order-card {
+      background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--primary);
+      border-radius: 12px; padding: 13px; margin-bottom: 10px;
+    }
+    .order-card.delivered { border-left-color: var(--success); opacity: 0.62; }
+    .order-card.cancelled { border-left-color: var(--hint); opacity: 0.5; text-decoration: line-through; }
+    .order-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .order-time { font-size: 1.15rem; font-weight: 800; }
+    .order-name { font-weight: 700; font-size: 0.95rem; margin-top: 2px; }
+    .order-items { font-size: 0.83rem; color: var(--hint); margin-top: 5px; line-height: 1.45; }
+    .order-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+
+    .mini-btn {
+      flex: 1 1 auto; min-width: 88px; min-height: 42px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--soft); color: var(--text);
+      font-weight: 700; font-size: 0.82rem; font-family: inherit;
+      display: flex; align-items: center; justify-content: center; gap: 5px;
+    }
+    .mini-btn.primary { background: var(--primary); color: var(--primary-text); border-color: transparent; }
+    .mini-btn.ok { background: var(--success); color: #fff; border-color: transparent; }
+    .mini-btn.bad { color: var(--danger); }
+
+    /* The order filters must all be visible at 375px — the money view is too
+       important to hide behind a horizontal scroll. */
+    #rangeChips { flex-wrap: wrap; overflow-x: visible; }
+
+    .stage {
+      display: inline-block; margin-top: 6px; padding: 3px 9px; border-radius: 20px;
+      font-size: 0.73rem; font-weight: 700; letter-spacing: 0.02em;
+      background: var(--soft); color: var(--hint);
+    }
+    .stage-confirmed { background: rgba(2,132,199,0.14); color: #0369a1; }
+    .stage-cooking { background: rgba(245,158,11,0.18); color: #b45309; }
+    .stage-out-for-delivery { background: rgba(139,92,246,0.16); color: #6d28d9; }
+    .stage-delivered { background: rgba(16,185,129,0.16); color: #047857; }
+    .stage-tentative { background: rgba(100,116,139,0.16); color: var(--hint); }
+
+    .empty { text-align: center; padding: 44px 16px; color: var(--hint); font-size: 0.9rem; }
+    .empty .big { font-size: 2.6rem; display: block; margin-bottom: 10px; }
+
+    /* ---------- Bottom bars ---------- */
+    .submit-wrap {
+      position: fixed; left: 0; right: 0; bottom: calc(62px + env(safe-area-inset-bottom));
+      padding: 10px 12px; z-index: 90;
+    }
+    .submit-btn {
+      width: 100%; background: var(--primary); color: var(--primary-text);
+      border: none; border-radius: 14px; padding: 16px; font-size: 1.02rem;
+      font-weight: 800; font-family: inherit; min-height: 56px;
+      box-shadow: 0 6px 18px rgba(2,132,199,0.32);
+    }
+    .submit-btn:disabled { opacity: 0.55; }
+
+    .tabbar {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 100;
+      display: flex; background: var(--card); border-top: 1px solid var(--border);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .tabbar button {
+      flex: 1; border: none; background: none; color: var(--hint);
+      padding: 9px 4px; font-size: 0.7rem; font-weight: 700; font-family: inherit;
+      min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    }
+    .tabbar button .ico { font-size: 1.35rem; line-height: 1; }
+    .tabbar button.active { color: var(--primary); }
+
+    .notice { font-size: 0.74rem; color: var(--hint); text-align: center; margin: 14px 0 4px; line-height: 1.5; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
 
-  <header>
-    <h1>🍲 Catering Order Manager</h1>
-    <p>Fast mobile order booking & reminder system</p>
-  </header>
-
-  <!-- Step 1: Food Selection by Category -->
-  <section class="card">
-    <div class="card-title">
-      <span>1. Select Menu Items</span>
-      <span class="badge" id="totalItemsBadge">0 Items</span>
-    </div>
-
-    <!-- Category selector -->
-    <div class="category-pills" id="categoryPills">
-      <div class="pill active" onclick="filterCategory('Biryani')">🍛 Biryani</div>
-      <div class="pill" onclick="filterCategory('Mandhi')">🍗 Mandhi</div>
-      <div class="pill" onclick="filterCategory('Rice')">🍚 Fried Rice</div>
-      <div class="pill" onclick="filterCategory('Curry')">🍲 Curries & Gravy</div>
-      <div class="pill" onclick="filterCategory('Dessert')">🍧 Desserts</div>
-      <div class="pill" onclick="filterCategory('Custom')">✏️ Custom Item</div>
-    </div>
-
-    <!-- Menu Items List -->
-    <div class="menu-grid" id="menuItemsContainer">
-      <!-- Injected via JavaScript -->
-    </div>
-
-    <!-- Custom Menu Entry Box (for custom catering requests) -->
-    <div id="customItemBox" style="display: none; margin-top: 10px;">
-      <div class="grid-2">
-        <input type="text" id="customItemName" placeholder="Item Name (e.g. Special Dessert)" />
-        <input type="text" id="customItemQty" placeholder="Portions / Kg (e.g. 50 Pax)" />
-      </div>
-      <button type="button" class="pill" style="margin-top: 8px; width: 100%;" onclick="addCustomItem()">➕ Add Custom Item to Order</button>
-    </div>
-
-    <!-- Selected Order Items Box -->
-    <div class="selected-summary" id="selectedSummary" style="display: none;">
-      <strong>🛒 Order Summary:</strong>
-      <ul class="selected-list" id="selectedList"></ul>
-    </div>
-  </section>
-
-  <!-- Step 2: Delivery Date & Time -->
-  <section class="card">
-    <div class="card-title">
-      <span>2. Delivery Schedule & Reminder</span>
-      <span style="font-size: 1.1rem;">⏰</span>
-    </div>
-    <div class="grid-2">
-      <div class="form-group">
-        <label for="deliveryDate">Delivery Date *</label>
-        <input type="date" id="deliveryDate" required />
-      </div>
-      <div class="form-group">
-        <label for="deliveryTime">Delivery Time *</label>
-        <input type="time" id="deliveryTime" required />
-      </div>
-    </div>
-    <div class="form-group">
-      <label for="prepStatus">Initial Status</label>
-      <select id="prepStatus">
-        <option value="Confirmed">✅ Confirmed (Need Prep)</option>
-        <option value="Tentative">⏳ Inquiry / Tentative</option>
-      </select>
-    </div>
-  </section>
-
-  <!-- Step 3: Customer Information -->
-  <section class="card">
-    <div class="card-title">
-      <span>3. Customer Details</span>
-      <span style="font-size: 1.1rem;">👤</span>
-    </div>
-    <div class="form-group">
-      <label for="customerName">Customer Name *</label>
-      <input type="text" id="customerName" placeholder="e.g. Mohamed Rizwan" required />
-    </div>
-    <div class="form-group">
-      <label for="customerPhone">Phone / WhatsApp *</label>
-      <input type="tel" id="customerPhone" placeholder="e.g. +94 77 123 4567" required />
-    </div>
-    <div class="form-group">
-      <label for="deliveryAddress">Delivery Address / Location</label>
-      <textarea id="deliveryAddress" rows="2" placeholder="e.g. 45 Galle Road, Dehiwala (or share landmark)"></textarea>
-    </div>
-  </section>
-
-  <!-- Step 4: Pricing & Special Notes -->
-  <section class="card">
-    <div class="card-title">
-      <span>4. Payment & Special Instructions</span>
-      <span style="font-size: 1.1rem;">💵</span>
-    </div>
-    <div class="grid-2">
-      <div class="form-group">
-        <label for="totalAmount">Total Amount</label>
-        <input type="number" id="totalAmount" placeholder="0.00" />
-      </div>
-      <div class="form-group">
-        <label for="advancePaid">Advance Paid</label>
-        <input type="number" id="advancePaid" placeholder="0.00" />
-      </div>
-    </div>
-    <div class="form-group">
-      <label for="specialNotes">Notes / Spice Level / Packaging</label>
-      <textarea id="specialNotes" rows="2" placeholder="e.g. Medium spice, packed in 5 large party containers, provide spoons"></textarea>
-    </div>
-  </section>
-
-  <p class="notice">Automated reminder alerts will be pushed to Telegram before delivery.</p>
-
-  <!-- Bottom Floating Action Bar -->
-  <div class="bottom-bar">
-    <button type="button" class="submit-btn" id="submitBtn" onclick="submitOrder()">
-      <span>💾 Save Order & Set Reminder</span>
-    </button>
+  <div class="console-banner" id="consoleBanner" hidden>
+    🖥 Catering Management Console — open inside Telegram for reminders
   </div>
 
-  <script>
-    // Configuration: Replace with your deployed Google Apps Script Web App URL
-    const APPS_SCRIPT_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbz_YOUR_SCRIPT_ID_HERE/exec";
+  <div class="alert warn" id="pendingBanner" hidden>
+    <span id="pendingText"></span>
+    <button type="button" id="retryPendingBtn">Retry</button>
+  </div>
 
-    // Initialize Telegram WebApp
-    const tg = window.Telegram?.WebApp;
-    if (tg) {
-      tg.expand();
-      tg.ready();
+  <div class="alert error" id="configBanner" hidden>
+    ⚠️ Not connected to the server yet. Ask your setup helper to finish Step 3.
+  </div>
+
+  <!-- ============ SCREEN: NEW ORDER ============ -->
+  <div id="screenNew">
+    <header>
+      <h1 id="newOrderTitle">🍲 New Order</h1>
+      <p id="newOrderSubtitle">Book an order in under a minute</p>
+    </header>
+
+    <section class="card">
+      <div class="card-title">
+        <span>1 · What to cook</span>
+        <span class="badge" id="itemsBadge">0 items</span>
+      </div>
+      <div class="pills" id="categoryPills"></div>
+      <div class="menu-list" id="menuList"></div>
+
+      <div id="customBox" hidden>
+        <div class="grid-2">
+          <input type="text" id="customName" placeholder="Item name" />
+          <input type="text" id="customQty" placeholder="e.g. 50 Pax" />
+        </div>
+        <div class="form-group" style="margin-top:10px">
+          <input type="number" id="customRate" inputmode="numeric" placeholder="Price for this item (optional)" />
+        </div>
+        <button type="button" class="mini-btn primary" style="width:100%;min-height:48px" id="addCustomBtn">➕ Add to order</button>
+      </div>
+
+      <div class="summary" id="summaryBox" hidden>
+        <strong>🛒 Order summary</strong>
+        <ul id="summaryList"></ul>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-title"><span>2 · When to deliver</span><span>⏰</span></div>
+      <div class="pills" id="dateChips"></div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="deliveryDate">Date</label>
+          <input type="date" id="deliveryDate" />
+        </div>
+        <div class="form-group">
+          <label for="deliveryTime">Time</label>
+          <input type="time" id="deliveryTime" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="prepStatus">Status</label>
+        <select id="prepStatus">
+          <option value="Confirmed">✅ Confirmed — start prep</option>
+          <option value="Tentative">⏳ Enquiry only — not confirmed</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-title"><span>3 · Customer</span><span>👤</span></div>
+      <div class="form-group">
+        <label for="customerPhone">Phone / WhatsApp</label>
+        <div class="phone-wrap">
+          <span class="phone-prefix" id="phonePrefix">+94</span>
+          <input type="tel" id="customerPhone" inputmode="tel" placeholder="77 123 4567" />
+        </div>
+        <div class="hint-chip" id="customerChip" hidden></div>
+      </div>
+      <div class="form-group">
+        <label for="customerName">Name</label>
+        <input type="text" id="customerName" placeholder="Customer name" />
+      </div>
+      <div class="form-group">
+        <label for="deliveryAddress">Delivery address</label>
+        <textarea id="deliveryAddress" rows="2" placeholder="Street, town or a landmark"></textarea>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-title"><span>4 · Money</span><span>💵</span></div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="totalAmount">Total (Rs.)</label>
+          <input type="number" id="totalAmount" inputmode="decimal" placeholder="0" />
+        </div>
+        <div class="form-group">
+          <label for="advancePaid">Advance (Rs.)</label>
+          <input type="number" id="advancePaid" inputmode="decimal" placeholder="0" />
+        </div>
+      </div>
+      <div class="money-row"><span>Menu total</span><span id="calcTotal">Rs. 0</span></div>
+      <div class="money-row big"><span>Balance due</span><span id="calcBalance">Rs. 0</span></div>
+      <div class="form-group" style="margin-top:12px">
+        <label for="specialNotes">Notes — spice, packing, delivery</label>
+        <textarea id="specialNotes" rows="2" placeholder="e.g. medium spice, 5 party trays, bring spoons"></textarea>
+      </div>
+    </section>
+
+    <p class="notice">
+      You will get one prep list the evening before,<br />and an urgent alert 3 hours before each delivery.
+    </p>
+  </div>
+
+  <!-- ============ SCREEN: ORDERS ============ -->
+  <div id="screenOrders" hidden>
+    <header>
+      <h1>📅 Orders</h1>
+      <p id="ordersSubtitle">Loading…</p>
+    </header>
+    <div class="pills" id="rangeChips">
+      <div class="pill active" data-range="today">Today</div>
+      <div class="pill" data-range="tomorrow">Tomorrow</div>
+      <div class="pill" data-range="upcoming">Upcoming</div>
+      <div class="pill" data-range="all">All</div>
+      <div class="pill" data-range="unpaid">💰 Unpaid</div>
+    </div>
+    <div id="ordersList"></div>
+  </div>
+
+  <!-- ============ BOTTOM BARS ============ -->
+  <div class="submit-wrap" id="submitWrap">
+    <button type="button" class="submit-btn" id="submitBtn">💾 Save order</button>
+  </div>
+
+  <nav class="tabbar">
+    <button type="button" data-screen="new" class="active"><span class="ico">🍲</span>New order</button>
+    <button type="button" data-screen="orders"><span class="ico">📅</span>Orders</button>
+  </nav>
+
+<script>
+/* ============================================================
+   CONFIGURATION — set these two values during setup.
+   See SETUP_INSTRUCTIONS.md
+   ============================================================ */
+var APPS_SCRIPT_WEBAPP_URL = "PASTE_YOUR_WEB_APP_URL_HERE";
+var API_KEY = "PASTE_YOUR_API_KEY_HERE";
+
+var COUNTRY_CODE = "94";     // Sri Lanka
+var CURRENCY = "Rs.";
+
+/* ============================================================
+   Telegram bootstrap
+   ============================================================ */
+/* The Telegram SDK loads on any page, so its mere presence proves nothing.
+   Outside Telegram it reports platform "unknown" — that is the real test. */
+var tg = (function () {
+  var w = window.Telegram && window.Telegram.WebApp;
+  if (!w) return null;
+  return (w.platform && w.platform !== 'unknown') ? w : null;
+})();
+
+if (tg) {
+  tg.ready();
+  tg.expand();
+} else {
+  document.getElementById('consoleBanner').hidden = false;
+}
+
+function haptic(style) {
+  try { if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred(style || 'light'); } catch (e) {}
+}
+
+function notify(title, message) {
+  if (tg && tg.showPopup) {
+    try { tg.showPopup({ title: title, message: message, buttons: [{ type: 'ok' }] }); return; } catch (e) {}
+  }
+  alert(title + '\n\n' + message);
+}
+
+function confirmAsk(message, cb) {
+  if (tg && tg.showConfirm) { tg.showConfirm(message, cb); return; }
+  cb(window.confirm(message));
+}
+
+function openLink(url) {
+  if (tg && tg.openLink) tg.openLink(url);
+  else window.open(url, '_blank');
+}
+
+/* ============================================================
+   Small helpers
+   ============================================================ */
+function $(id) { return document.getElementById(id); }
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function money(n) {
+  var v = Number(n) || 0;
+  return CURRENCY + ' ' + v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+/** Local calendar date as yyyy-MM-dd. Never use toISOString() — it is UTC and
+ *  turns "tomorrow" into "today" every evening after 6:30pm here. */
+function localDate(offsetDays) {
+  var d = new Date();
+  if (offsetDays) d.setDate(d.getDate() + offsetDays);
+  var m = String(d.getMonth() + 1).padStart(2, '0');
+  var day = String(d.getDate()).padStart(2, '0');
+  return d.getFullYear() + '-' + m + '-' + day;
+}
+
+function prettyDate(iso) {
+  if (!iso) return '';
+  var d = new Date(iso + 'T12:00:00');
+  if (iso === localDate(0)) return 'Today';
+  if (iso === localDate(1)) return 'Tomorrow';
+  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+/** "077 123 4567" / "+94 77..." / "77..." all become "94771234567". */
+function normalizePhone(raw) {
+  var digits = String(raw || '').replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  if (digits.indexOf('00') === 0) digits = digits.slice(2);
+  if (digits.charAt(0) === '0') digits = COUNTRY_CODE + digits.slice(1);
+  else if (digits.indexOf(COUNTRY_CODE) !== 0 && digits.length <= 9) digits = COUNTRY_CODE + digits;
+  return digits;
+}
+
+function isConfigured() {
+  return APPS_SCRIPT_WEBAPP_URL.indexOf('https://script.google.com/') === 0 &&
+         API_KEY.indexOf('PASTE_') !== 0;
+}
+
+/* ============================================================
+   Network — real errors, never a silent success
+   ============================================================ */
+function apiGet(action, params) {
+  var qs = ['action=' + encodeURIComponent(action), 'key=' + encodeURIComponent(API_KEY)];
+  Object.keys(params || {}).forEach(function (k) {
+    if (params[k] !== undefined && params[k] !== null && params[k] !== '') {
+      qs.push(k + '=' + encodeURIComponent(params[k]));
+    }
+  });
+  return fetch(APPS_SCRIPT_WEBAPP_URL + '?' + qs.join('&'), { method: 'GET', redirect: 'follow' })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.status !== 'ok' && data.status !== 'success') throw new Error(data.message || 'Server error');
+      return data;
+    });
+}
+
+/**
+ * text/plain keeps this a "simple" CORS request (no preflight, which Apps
+ * Script cannot answer) while still letting us READ the response — the
+ * previous version used mode:'no-cors' and therefore reported success even
+ * when nothing was saved.
+ */
+function apiPost(payload) {
+  payload.key = API_KEY;
+  return fetch(APPS_SCRIPT_WEBAPP_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+    redirect: 'follow'
+  })
+    .then(function (r) {
+      if (!r.ok) throw new Error('Server replied ' + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      if (data.status !== 'success' && data.status !== 'ok') {
+        throw new Error(data.message || 'Server rejected the order');
+      }
+      return data;
+    });
+}
+
+/* ============================================================
+   State
+   ============================================================ */
+var SEED_MENU = [
+  { id: 's1', category: 'Biryani', name: 'Chicken Dum Biryani', unit: 'Pax', rate: 950, step: 5 },
+  { id: 's2', category: 'Biryani', name: 'Mutton Dum Biryani', unit: 'Pax', rate: 1350, step: 5 },
+  { id: 's3', category: 'Mandhi', name: 'Chicken Mandhi (Full)', unit: 'Packs', rate: 3200, step: 1 },
+  { id: 's4', category: 'Rice', name: 'Chicken Fried Rice', unit: 'Portions', rate: 750, step: 5 },
+  { id: 's5', category: 'Curry', name: 'Butter Chicken Gravy', unit: 'Litres', rate: 2200, step: 1 },
+  { id: 's6', category: 'Dessert', name: 'Watalappam Party Pack', unit: 'Cups', rate: 250, step: 5 }
+];
+
+// Mirrors STATUS_FLOW in the backend. One button always shows the next step,
+// so there is never a status list to pick from mid-service.
+var STATUS_ICON = {
+  'Tentative': '⏳', 'Confirmed': '✅', 'Cooking': '🍳',
+  'Out for Delivery': '🚚', 'Delivered': '📦', 'Cancelled': '✕'
+};
+var STATUS_ACTION = {
+  'Tentative': '✅ Confirm',
+  'Confirmed': '🍳 Start cooking',
+  'Cooking': '🚚 Out for delivery',
+  'Out for Delivery': '📦 Delivered'
+};
+
+var CATEGORY_LABELS = {
+  Biryani: '🍛 Biryani', Mandhi: '🍗 Mandhi', Rice: '🍚 Fried Rice',
+  Curry: '🍲 Curries', Dessert: '🍧 Desserts', Other: '🍽 Other'
+};
+
+var menu = [];
+var quantities = {};        // menuItemId -> qty
+var customItems = [];       // { name, qty, rate }
+var currentCategory = null;
+var totalManuallyEdited = false;
+var editingOrderId = null;
+var currentRange = 'today';
+var lastSavedOrder = null;
+
+var LS = {
+  MENU: 'cat_menu_v1',
+  PENDING: 'cat_pending_v1'
+};
+
+function lsGet(key, fallback) {
+  try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch (e) { return fallback; }
+}
+function lsSet(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+}
+
+/* ============================================================
+   Menu — sheet first, cache second, built-in seed last
+   ============================================================ */
+function loadMenu() {
+  var cached = lsGet(LS.MENU, null);
+  if (cached && cached.length) { menu = cached; renderCategories(); }
+  else { menu = SEED_MENU.slice(); renderCategories(); }
+
+  if (!isConfigured()) { $('configBanner').hidden = false; return; }
+
+  apiGet('menu').then(function (data) {
+    if (data.menu && data.menu.length) {
+      menu = data.menu;
+      lsSet(LS.MENU, menu);
+      renderCategories();
+    }
+  }).catch(function (err) {
+    console.warn('Menu refresh failed, using cached menu:', err.message);
+  });
+}
+
+function categories() {
+  var seen = [];
+  menu.forEach(function (m) { if (seen.indexOf(m.category) === -1) seen.push(m.category); });
+  return seen;
+}
+
+function renderCategories() {
+  var cats = categories();
+  if (!currentCategory || cats.indexOf(currentCategory) === -1) currentCategory = cats[0] || 'Custom';
+
+  var html = cats.map(function (c) {
+    return '<div class="pill' + (c === currentCategory ? ' active' : '') + '" data-category="' + esc(c) + '">' +
+           esc(CATEGORY_LABELS[c] || c) + '</div>';
+  }).join('');
+  html += '<div class="pill' + (currentCategory === 'Custom' ? ' active' : '') + '" data-category="Custom">✏️ Custom</div>';
+
+  $('categoryPills').innerHTML = html;
+  renderMenu();
+}
+
+function renderMenu() {
+  var isCustom = currentCategory === 'Custom';
+  $('customBox').hidden = !isCustom;
+  $('menuList').hidden = isCustom;
+  if (isCustom) return;
+
+  var items = menu.filter(function (m) { return m.category === currentCategory; });
+  if (!items.length) {
+    $('menuList').innerHTML = '<div class="empty">No dishes in this group yet.</div>';
+    return;
+  }
+
+  $('menuList').innerHTML = items.map(function (item) {
+    var qty = quantities[item.id] || 0;
+    var lineTotal = qty * (Number(item.rate) || 0);
+    return '' +
+      '<div class="menu-item' + (qty > 0 ? ' has-qty' : '') + '">' +
+        '<div class="item-info">' +
+          '<div class="item-name">' + esc(item.name) + '</div>' +
+          '<div class="item-meta">' + esc(item.unit) +
+            (item.rate ? ' · ' + money(item.rate) + ' each' : '') + '</div>' +
+          (lineTotal > 0 ? '<div class="item-line-total">' + money(lineTotal) + '</div>' : '') +
+        '</div>' +
+        '<div class="stepper">' +
+          '<button type="button" class="qty-btn" data-step="' + esc(item.id) + '" data-dir="-1">−</button>' +
+          '<input class="qty-value" type="number" inputmode="numeric" value="' + qty + '" data-qty="' + esc(item.id) + '" />' +
+          '<button type="button" class="qty-btn" data-step="' + esc(item.id) + '" data-dir="1">+</button>' +
+        '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function stepQty(itemId, dir) {
+  var item = menu.filter(function (m) { return m.id === itemId; })[0];
+  var step = (item && Number(item.step)) || 1;
+  var next = Math.max(0, (quantities[itemId] || 0) + dir * step);
+  setQty(itemId, next);
+  haptic('light');
+}
+
+function setQty(itemId, value) {
+  var v = Math.max(0, Math.floor(Number(value) || 0));
+  if (v === 0) delete quantities[itemId]; else quantities[itemId] = v;
+  renderMenu();
+  refreshSummary();
+}
+
+/* ---------- Custom items ---------- */
+function addCustomItem() {
+  var name = $('customName').value.trim();
+  var qty = $('customQty').value.trim();
+  if (!name || !qty) { notify('Missing details', 'Enter both the item name and the quantity.'); return; }
+  customItems.push({ name: name, qty: qty, rate: Number($('customRate').value) || 0 });
+  $('customName').value = ''; $('customQty').value = ''; $('customRate').value = '';
+  haptic('medium');
+  refreshSummary();
+}
+
+function removeCustomItem(index) {
+  customItems.splice(index, 1);
+  refreshSummary();
+}
+
+/* ---------- Order lines & money ---------- */
+function orderLines() {
+  var lines = [];
+  Object.keys(quantities).forEach(function (id) {
+    var item = menu.filter(function (m) { return m.id === id; })[0];
+    if (!item || !quantities[id]) return;
+    lines.push({ name: item.name, unit: item.unit, qty: quantities[id], rate: Number(item.rate) || 0 });
+  });
+  customItems.forEach(function (c) {
+    lines.push({ name: c.name, unit: '', qty: c.qty, rate: Number(c.rate) || 0, custom: true });
+  });
+  return lines;
+}
+
+function menuTotal() {
+  return orderLines().reduce(function (sum, l) {
+    var qty = Number(l.qty) || 0;
+    return sum + qty * (Number(l.rate) || 0);
+  }, 0);
+}
+
+function refreshSummary() {
+  var lines = orderLines();
+  $('itemsBadge').textContent = lines.length + ' item' + (lines.length === 1 ? '' : 's');
+
+  if (!lines.length) {
+    $('summaryBox').hidden = true;
+  } else {
+    $('summaryBox').hidden = false;
+    var menuCount = lines.length - customItems.length;
+    $('summaryList').innerHTML = lines.map(function (l, i) {
+      var qtyText = l.custom ? esc(l.qty) : l.qty + ' ' + esc(l.unit);
+      var del = l.custom ? '<span class="del" data-remove-custom="' + (i - menuCount) + '">✕</span>' : '';
+      return '<li><span>' + esc(l.name) + '</span><strong>' + qtyText + ' ' + del + '</strong></li>';
+    }).join('');
+  }
+
+  var calc = menuTotal();
+  $('calcTotal').textContent = money(calc);
+  if (!totalManuallyEdited && calc > 0) $('totalAmount').value = calc;
+  refreshBalance();
+  updateMainButton();
+}
+
+function refreshBalance() {
+  var total = Number($('totalAmount').value) || 0;
+  var advance = Number($('advancePaid').value) || 0;
+  $('calcBalance').textContent = money(total - advance);
+}
+
+/* ============================================================
+   Delivery date chips
+   ============================================================ */
+function renderDateChips() {
+  var opts = [
+    { label: 'Today', date: localDate(0) },
+    { label: 'Tomorrow', date: localDate(1) },
+    { label: prettyDate(localDate(2)), date: localDate(2) },
+    { label: prettyDate(localDate(3)), date: localDate(3) }
+  ];
+  var current = $('deliveryDate').value;
+  $('dateChips').innerHTML = opts.map(function (o) {
+    return '<div class="pill' + (o.date === current ? ' active' : '') + '" data-date="' + o.date + '">' + esc(o.label) + '</div>';
+  }).join('');
+}
+
+/* ============================================================
+   Customer lookup
+   ============================================================ */
+var lookupTimer = null;
+function scheduleCustomerLookup() {
+  clearTimeout(lookupTimer);
+  var phone = normalizePhone($('customerPhone').value);
+  if (phone.length < 9 || !isConfigured()) { $('customerChip').hidden = true; return; }
+
+  lookupTimer = setTimeout(function () {
+    apiGet('customer', { phone: phone }).then(function (data) {
+      var c = data.customer;
+      if (!c) { $('customerChip').hidden = true; return; }
+      $('customerChip').hidden = false;
+      $('customerChip').innerHTML = '⭐ Regular customer — ' + c.totalOrders + ' order' + (c.totalOrders === 1 ? '' : 's') +
+        (c.lastOrderDate ? ', last on ' + esc(c.lastOrderDate) : '');
+      if (!$('customerName').value.trim() && c.name) $('customerName').value = c.name;
+      if (!$('deliveryAddress').value.trim() && c.address) $('deliveryAddress').value = c.address;
+    }).catch(function () { $('customerChip').hidden = true; });
+  }, 500);
+}
+
+/* ============================================================
+   Submit
+   ============================================================ */
+function buildPayload() {
+  var lines = orderLines();
+  var total = Number($('totalAmount').value) || 0;
+  var advance = Number($('advancePaid').value) || 0;
+
+  return {
+    itemsJson: lines,
+    itemsSummary: lines.map(function (l) {
+      return l.name + ': ' + l.qty + (l.unit ? ' ' + l.unit : '');
+    }).join('; '),
+    deliveryDate: $('deliveryDate').value,
+    deliveryTime: $('deliveryTime').value,
+    customerName: $('customerName').value.trim(),
+    customerPhone: normalizePhone($('customerPhone').value),
+    deliveryAddress: $('deliveryAddress').value.trim(),
+    prepStatus: $('prepStatus').value,
+    totalAmount: total,
+    advancePaid: advance,
+    balanceDue: total - advance,
+    specialNotes: $('specialNotes').value.trim()
+  };
+}
+
+function validate(payload) {
+  if (!payload.itemsJson.length) return 'Add at least one dish to the order.';
+  if (!payload.customerName) return 'Enter the customer name.';
+  if (normalizePhone(payload.customerPhone).length < 9) return 'Enter a valid phone number.';
+  if (!payload.deliveryDate) return 'Choose a delivery date.';
+  if (!payload.deliveryTime) return 'Choose a delivery time.';
+  return null;
+}
+
+function submitOrder() {
+  if (!isConfigured()) {
+    notify('Not connected', 'This app has not been linked to your Google Sheet yet. Setup step 3 is incomplete.');
+    return;
+  }
+
+  var payload = buildPayload();
+  var problem = validate(payload);
+  if (problem) { notify('Almost there', problem); haptic('heavy'); return; }
+
+  setBusy(true);
+  var request = editingOrderId
+    ? { action: 'updateOrder', orderId: editingOrderId, order: payload }
+    : { action: 'newOrder', order: payload };
+
+  apiPost(request).then(function (res) {
+    lastSavedOrder = payload;
+    haptic('medium');
+    setBusy(false);
+
+    var wasEdit = !!editingOrderId;
+    var summaryPhone = payload.customerPhone;
+    resetForm();
+
+    if (wasEdit) {
+      notify('Order updated', 'Changes saved. Reminders were reset to the new delivery time.');
+      showScreen('orders');
+      loadOrders();
+      return;
     }
 
-    // Default Menu Items database
-    const MENU_ITEMS = [
-      { id: 'b1', category: 'Biryani', name: 'Chicken Dum Biryani', unit: 'Pax (Persons)' },
-      { id: 'b2', category: 'Biryani', name: 'Mutton Dum Biryani', unit: 'Pax (Persons)' },
-      { id: 'b3', category: 'Biryani', name: 'Beef Biryani', unit: 'Pax (Persons)' },
-      { id: 'b4', category: 'Biryani', name: 'Egg / Veg Biryani', unit: 'Pax (Persons)' },
-      { id: 'm1', category: 'Mandhi', name: 'Chicken Mandhi (Quarter/Half/Full)', unit: 'Packs' },
-      { id: 'm2', category: 'Mandhi', name: 'Mutton Mandhi Special', unit: 'Packs' },
-      { id: 'r1', category: 'Rice', name: 'Chicken Fried Rice', unit: 'Portions' },
-      { id: 'r2', category: 'Rice', name: 'Seafood Mixed Fried Rice', unit: 'Portions' },
-      { id: 'r3', category: 'Rice', name: 'Egg / Vegetable Fried Rice', unit: 'Portions' },
-      { id: 'c1', category: 'Curry', name: 'Butter Chicken Gravy', unit: 'Liters / Portions' },
-      { id: 'c2', category: 'Curry', name: 'Chilli Chicken Dry/Gravy', unit: 'Portions' },
-      { id: 'c3', category: 'Curry', name: 'Raita & Mint Chutney', unit: 'Bowls' },
-      { id: 'd1', category: 'Dessert', name: 'Watalappam Party Pack', unit: 'Cups / Tray' },
-      { id: 'd2', category: 'Dessert', name: 'Gulab Jamun (Catering Pack)', unit: 'Pieces' }
-    ];
-
-    // Selected order items state: { itemId: quantity }
-    const selectedQuantities = {};
-    let customItems = [];
-    let currentCategory = 'Biryani';
-
-    // Set default date to Tomorrow and time to 12:30 PM
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    document.getElementById('deliveryDate').value = tomorrow.toISOString().split('T')[0];
-    document.getElementById('deliveryTime').value = "12:30";
-
-    function filterCategory(category) {
-      currentCategory = category;
-      document.querySelectorAll('.category-pills .pill').forEach(el => {
-        el.classList.toggle('active', el.innerText.includes(category));
-      });
-
-      const customBox = document.getElementById('customItemBox');
-      const container = document.getElementById('menuItemsContainer');
-
-      if (category === 'Custom') {
-        customBox.style.display = 'block';
-        container.style.display = 'none';
-      } else {
-        customBox.style.display = 'none';
-        container.style.display = 'grid';
-        renderMenuItems(category);
+    confirmAsk(
+      'Order saved (' + res.orderId + ').\n\nSend the summary to ' + payload.customerName + ' on WhatsApp so they can confirm?',
+      function (yes) {
+        if (yes) openLink('https://wa.me/' + summaryPhone + '?text=' + encodeURIComponent(customerSummaryText(payload, res.orderId)));
       }
+    );
+  }).catch(function (err) {
+    setBusy(false);
+    queuePending(request);
+    notify('Could not save — order kept safe',
+      'Reason: ' + err.message + '\n\nThe order is stored on this phone and will be sent when you are back online. Tap Retry at the top.');
+  });
+}
+
+function customerSummaryText(payload, orderId) {
+  var lines = payload.itemsJson.map(function (l) {
+    return '• ' + l.name + ' — ' + l.qty + (l.unit ? ' ' + l.unit : '');
+  }).join('\n');
+  return 'Order confirmation ' + orderId + '\n\n' + lines +
+    '\n\nDelivery: ' + prettyDate(payload.deliveryDate) + ' at ' + payload.deliveryTime +
+    (payload.deliveryAddress ? '\nAddress: ' + payload.deliveryAddress : '') +
+    '\n\nTotal: ' + money(payload.totalAmount) +
+    '\nAdvance paid: ' + money(payload.advancePaid) +
+    '\nBalance on delivery: ' + money(payload.balanceDue) +
+    '\n\nPlease reply to confirm these details are correct. Thank you!';
+}
+
+function setBusy(busy) {
+  $('submitBtn').disabled = busy;
+  $('submitBtn').textContent = busy ? '⏳ Saving…' : (editingOrderId ? '💾 Save changes' : '💾 Save order');
+  if (tg && tg.MainButton) {
+    if (busy) tg.MainButton.showProgress(); else tg.MainButton.hideProgress();
+  }
+}
+
+function resetForm() {
+  quantities = {};
+  customItems = [];
+  editingOrderId = null;
+  totalManuallyEdited = false;
+  ['customerName', 'customerPhone', 'deliveryAddress', 'totalAmount', 'advancePaid', 'specialNotes'].forEach(function (id) {
+    $(id).value = '';
+  });
+  $('customerChip').hidden = true;
+  $('deliveryDate').value = localDate(1);
+  $('deliveryTime').value = '12:30';
+  $('prepStatus').value = 'Confirmed';
+  $('newOrderTitle').textContent = '🍲 New Order';
+  $('newOrderSubtitle').textContent = 'Book an order in under a minute';
+  renderDateChips();
+  renderMenu();
+  refreshSummary();
+  if (tg && tg.disableClosingConfirmation) tg.disableClosingConfirmation();
+}
+
+/* ============================================================
+   Offline queue — a failed save is never a lost order
+   ============================================================ */
+function queuePending(request) {
+  var pending = lsGet(LS.PENDING, []);
+  pending.push({ at: Date.now(), request: request });
+  lsSet(LS.PENDING, pending);
+  renderPendingBanner();
+}
+
+function renderPendingBanner() {
+  var pending = lsGet(LS.PENDING, []);
+  $('pendingBanner').hidden = pending.length === 0;
+  if (pending.length) {
+    $('pendingText').textContent = '📥 ' + pending.length + ' order' + (pending.length === 1 ? '' : 's') + ' waiting to be sent';
+  }
+}
+
+function flushPending(silent) {
+  var pending = lsGet(LS.PENDING, []);
+  if (!pending.length || !isConfigured()) return;
+
+  var remaining = [];
+  var sent = 0;
+
+  (function next(i) {
+    if (i >= pending.length) {
+      lsSet(LS.PENDING, remaining);
+      renderPendingBanner();
+      if (sent && !silent) notify('Sent', sent + ' saved order' + (sent === 1 ? '' : 's') + ' uploaded successfully.');
+      if (sent) loadOrders();
+      return;
+    }
+    apiPost(pending[i].request)
+      .then(function () { sent++; })
+      .catch(function () { remaining.push(pending[i]); })
+      .then(function () { next(i + 1); });
+  })(0);
+}
+
+/* ============================================================
+   Orders screen
+   ============================================================ */
+function rangeDates(range) {
+  if (range === 'today') return { from: localDate(0), to: localDate(0) };
+  if (range === 'tomorrow') return { from: localDate(1), to: localDate(1) };
+  if (range === 'upcoming') return { from: localDate(0), to: localDate(30) };
+  return { from: localDate(-60), to: localDate(120) };
+}
+
+function loadOrders() {
+  if (!isConfigured()) {
+    $('ordersList').innerHTML = '<div class="empty"><span class="big">🔌</span>Not connected to your Google Sheet yet.</div>';
+    $('ordersSubtitle').textContent = 'Setup incomplete';
+    return;
+  }
+
+  $('ordersList').innerHTML = '<div class="empty">Loading…</div>';
+
+  var request = currentRange === 'unpaid'
+    ? apiGet('unpaid')
+    : apiGet('orders', rangeDates(currentRange));
+
+  request.then(function (data) {
+    renderOrders(data.orders || []);
+  }).catch(function (err) {
+    $('ordersList').innerHTML = '<div class="empty"><span class="big">⚠️</span>Could not load orders.<br />' + esc(err.message) + '</div>';
+    $('ordersSubtitle').textContent = 'Offline';
+  });
+}
+
+function renderOrders(orders) {
+  var active = orders.filter(function (o) { return o.status !== 'Cancelled'; });
+  var due = active.reduce(function (s, o) { return s + (Number(o.balanceDue) || 0); }, 0);
+
+  $('ordersSubtitle').textContent = active.length
+    ? active.length + ' order' + (active.length === 1 ? '' : 's') + (due > 0 ? ' · ' + money(due) + ' to collect' : '')
+    : (currentRange === 'unpaid' ? 'Everything is paid up' : 'Nothing scheduled');
+
+  if (!orders.length) {
+    $('ordersList').innerHTML = currentRange === 'unpaid'
+      ? '<div class="empty"><span class="big">✅</span>Nothing outstanding.<br />Every order is paid up.</div>'
+      : '<div class="empty"><span class="big">🌤</span>No orders in this period.</div>';
+    return;
+  }
+
+  $('ordersList').innerHTML = orders.map(function (o) {
+    var cls = o.status === 'Delivered' ? ' delivered' : (o.status === 'Cancelled' ? ' cancelled' : '');
+    var maps = o.deliveryAddress
+      ? '<button type="button" class="mini-btn" data-maps="' + esc(o.deliveryAddress) + '">🗺 Map</button>' : '';
+    var closed = o.status === 'Delivered' || o.status === 'Cancelled';
+    var next = STATUS_ACTION[o.status];
+
+    var actions = closed ? '' :
+      (next ? '<button type="button" class="mini-btn ok" data-advance="' + esc(o.orderId) + '">' + next + '</button>' : '') +
+      '<button type="button" class="mini-btn primary" data-edit="' + esc(o.orderId) + '">✏️ Edit</button>' +
+      '<button type="button" class="mini-btn bad" data-cancel="' + esc(o.orderId) + '">✕ Cancel</button>';
+
+    if (Number(o.balanceDue) > 0 && o.status !== 'Cancelled') {
+      actions += '<button type="button" class="mini-btn" data-paid="' + esc(o.orderId) + '">💵 Mark paid</button>';
     }
 
-    function renderMenuItems(category) {
-      const container = document.getElementById('menuItemsContainer');
-      const items = MENU_ITEMS.filter(item => item.category === category);
-      
-      container.innerHTML = items.map(item => {
-        const qty = selectedQuantities[item.id] || 0;
-        return `
-          <div class="menu-item">
-            <div class="item-info">
-              <div class="item-name">${item.name}</div>
-              <div class="item-unit">${item.unit}</div>
-            </div>
-            <div class="qty-control">
-              <button class="qty-btn" type="button" onclick="updateQty('${item.id}', -5)">-</button>
-              <div class="qty-display" id="qty_${item.id}">${qty}</div>
-              <button class="qty-btn" type="button" onclick="updateQty('${item.id}', 5)">+</button>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
+    return '' +
+      '<div class="order-card' + cls + '">' +
+        '<div class="order-top">' +
+          '<span class="order-time">' + esc(o.deliveryTime) + '</span>' +
+          '<span class="badge grey">' + esc(prettyDate(o.deliveryDate)) + '</span>' +
+        '</div>' +
+        '<div class="order-name">' + esc(o.customerName) + '</div>' +
+        '<div class="stage stage-' + esc(String(o.status).toLowerCase().replace(/ /g, '-')) + '">' +
+          (STATUS_ICON[o.status] || '') + ' ' + esc(o.status) + '</div>' +
+        '<div class="order-items">' + esc(o.itemsSummary) + '</div>' +
+        (o.deliveryAddress ? '<div class="order-items">📍 ' + esc(o.deliveryAddress) + '</div>' : '') +
+        (Number(o.balanceDue) > 0 ? '<div class="order-items">💰 <strong>' + money(o.balanceDue) + '</strong> to collect</div>' : '') +
+        (o.specialNotes ? '<div class="order-items">📝 ' + esc(o.specialNotes) + '</div>' : '') +
+        '<div class="order-actions">' +
+          '<button type="button" class="mini-btn" data-call="' + esc(o.customerPhone) + '">📞 Call</button>' +
+          '<button type="button" class="mini-btn" data-wa="' + esc(o.customerPhone) + '">💬 WhatsApp</button>' +
+          maps + actions +
+        '</div>' +
+      '</div>';
+  }).join('');
 
-    function updateQty(itemId, delta) {
-      const current = selectedQuantities[itemId] || 0;
-      const next = Math.max(0, current + delta);
-      selectedQuantities[itemId] = next;
-      
-      const display = document.getElementById(`qty_${itemId}`);
-      if (display) display.innerText = next;
+  window.__orders = orders;
+}
 
-      updateOrderSummary();
-    }
+function findOrder(orderId) {
+  return (window.__orders || []).filter(function (o) { return o.orderId === orderId; })[0];
+}
 
-    function addCustomItem() {
-      const name = document.getElementById('customItemName').value.trim();
-      const qty = document.getElementById('customItemQty').value.trim();
-      if (!name || !qty) {
-        alert("Please enter both custom item name and quantity/portion.");
-        return;
-      }
-      customItems.push({ name, qty });
-      document.getElementById('customItemName').value = '';
-      document.getElementById('customItemQty').value = '';
-      updateOrderSummary();
-    }
+function editOrder(orderId) {
+  var o = findOrder(orderId);
+  if (!o) return;
 
-    function updateOrderSummary() {
-      const listEl = document.getElementById('selectedList');
-      const summaryBox = document.getElementById('selectedSummary');
-      const badge = document.getElementById('totalItemsBadge');
+  quantities = {};
+  customItems = [];
+  (o.itemsJson || []).forEach(function (line) {
+    var match = menu.filter(function (m) { return m.name === line.name; })[0];
+    if (match && !line.custom) quantities[match.id] = Number(line.qty) || 0;
+    else customItems.push({ name: line.name, qty: line.qty, rate: line.rate || 0 });
+  });
 
-      const itemsList = [];
-      let totalCount = 0;
+  editingOrderId = orderId;
+  totalManuallyEdited = true;
+  $('deliveryDate').value = o.deliveryDate;
+  $('deliveryTime').value = o.deliveryTime;
+  $('customerName').value = o.customerName;
+  $('customerPhone').value = o.customerPhone;
+  $('deliveryAddress').value = o.deliveryAddress || '';
+  $('totalAmount').value = o.totalAmount || '';
+  $('advancePaid').value = o.advancePaid || '';
+  $('specialNotes').value = o.specialNotes || '';
+  $('prepStatus').value = o.status === 'Tentative' ? 'Tentative' : 'Confirmed';
+  $('newOrderTitle').textContent = '✏️ Edit order';
+  $('newOrderSubtitle').textContent = orderId;
 
-      for (const [id, qty] of Object.entries(selectedQuantities)) {
-        if (qty > 0) {
-          const item = MENU_ITEMS.find(i => i.id === id);
-          if (item) {
-            itemsList.push(`<li><span>${item.name}</span><strong>${qty} ${item.unit}</strong></li>`);
-            totalCount++;
-          }
-        }
-      }
+  renderDateChips();
+  renderMenu();
+  refreshSummary();
+  showScreen('new');
+  window.scrollTo(0, 0);
+}
 
-      customItems.forEach((c, idx) => {
-        itemsList.push(`<li><span>${c.name} (Custom)</span><strong>${c.qty}</strong></li>`);
-        totalCount++;
-      });
+/** Moves an order one step along the pipeline. No confirmation — it is a
+ *  single tap he will make several times a day, and Edit can undo it. */
+function advanceStatus(orderId) {
+  haptic('light');
+  apiPost({ action: 'advanceStatus', orderId: orderId })
+    .then(function () { loadOrders(); })
+    .catch(function (err) { notify('Could not update', err.message); });
+}
 
-      badge.innerText = `${totalCount} Item${totalCount === 1 ? '' : 's'}`;
+function markPaid(orderId) {
+  var o = findOrder(orderId);
+  var amount = o ? money(o.balanceDue) : 'the balance';
+  confirmAsk('Record ' + amount + ' as received from ' + (o ? o.customerName : 'this customer') + '?', function (yes) {
+    if (!yes) return;
+    apiPost({ action: 'markPaid', orderId: orderId })
+      .then(function () { haptic('medium'); loadOrders(); })
+      .catch(function (err) { notify('Could not update', err.message); });
+  });
+}
 
-      if (itemsList.length > 0) {
-        summaryBox.style.display = 'block';
-        listEl.innerHTML = itemsList.join('');
-      } else {
-        summaryBox.style.display = 'none';
-      }
-    }
+function changeStatus(orderId, status, question) {
+  confirmAsk(question, function (yes) {
+    if (!yes) return;
+    apiPost({ action: status === 'Delivered' ? 'markDelivered' : 'cancelOrder', orderId: orderId })
+      .then(function () { haptic('medium'); loadOrders(); })
+      .catch(function (err) { notify('Could not update', err.message); });
+  });
+}
 
-    async function submitOrder() {
-      const customerName = document.getElementById('customerName').value.trim();
-      const customerPhone = document.getElementById('customerPhone').value.trim();
-      const deliveryDate = document.getElementById('deliveryDate').value;
-      const deliveryTime = document.getElementById('deliveryTime').value;
-      const deliveryAddress = document.getElementById('deliveryAddress').value.trim();
-      const prepStatus = document.getElementById('prepStatus').value;
-      const totalAmount = document.getElementById('totalAmount').value;
-      const advancePaid = document.getElementById('advancePaid').value;
-      const specialNotes = document.getElementById('specialNotes').value.trim();
+/* ============================================================
+   Screens & main button
+   ============================================================ */
+function showScreen(name) {
+  var isNew = name === 'new';
+  $('screenNew').hidden = !isNew;
+  $('screenOrders').hidden = isNew;
+  $('submitWrap').hidden = !isNew || !!(tg && tg.MainButton);
 
-      // Collect food items
-      const orderedItems = [];
-      for (const [id, qty] of Object.entries(selectedQuantities)) {
-        if (qty > 0) {
-          const item = MENU_ITEMS.find(i => i.id === id);
-          orderedItems.push(`${item.name}: ${qty} ${item.unit}`);
-        }
-      }
-      customItems.forEach(c => {
-        orderedItems.push(`${c.name}: ${c.qty}`);
-      });
+  document.querySelectorAll('.tabbar button').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.screen === name);
+  });
 
-      if (orderedItems.length === 0) {
-        alert("Please select at least one menu item (Biryani, Mandi, etc.)");
-        return;
-      }
-      if (!customerName || !customerPhone || !deliveryDate || !deliveryTime) {
-        alert("Please fill in Customer Name, Phone, Delivery Date and Delivery Time.");
-        return;
-      }
+  updateMainButton();
+  if (!isNew) loadOrders();
+}
 
-      const payload = {
-        telegramUser: tg?.initDataUnsafe?.user || null,
-        order: {
-          itemsSummary: orderedItems.join("; "),
-          deliveryDate: deliveryDate,
-          deliveryTime: deliveryTime,
-          customerName: customerName,
-          customerPhone: customerPhone,
-          deliveryAddress: deliveryAddress || "Not specified",
-          prepStatus: prepStatus,
-          totalAmount: totalAmount || "0",
-          advancePaid: advancePaid || "0",
-          balanceDue: (Number(totalAmount || 0) - Number(advancePaid || 0)).toString(),
-          specialNotes: specialNotes || "-"
-        }
-      };
+function updateMainButton() {
+  if (!tg || !tg.MainButton) return;
+  if ($('screenNew').hidden) { tg.MainButton.hide(); return; }
 
-      const submitBtn = document.getElementById('submitBtn');
-      submitBtn.disabled = true;
-      submitBtn.innerText = "⏳ Saving Order...";
+  var count = orderLines().length;
+  tg.MainButton.setText(editingOrderId ? '💾 SAVE CHANGES' : (count ? '💾 SAVE ORDER · ' + money(menuTotal()) : '💾 SAVE ORDER'));
+  tg.MainButton.show();
 
-      try {
-        // Send order to Google Apps Script WebApp
-        await fetch(APPS_SCRIPT_WEBAPP_URL, {
-          method: 'POST',
-          mode: 'no-cors', // standard for Google Apps Script Web App endpoints
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+  if (count > 0 && tg.enableClosingConfirmation) tg.enableClosingConfirmation();
+}
 
-        if (tg) {
-          tg.showPopup({
-            title: "Order Saved!",
-            message: `Order for ${customerName} scheduled for ${deliveryDate} at ${deliveryTime}. Reminder will alert your Telegram.`,
-            buttons: [{ type: "ok" }]
-          }, () => {
-            tg.close();
-          });
-        } else {
-          alert(`Order saved successfully for ${customerName}!`);
-          location.reload();
-        }
-      } catch (err) {
-        alert("Error saving order: " + err.message);
-        submitBtn.disabled = false;
-        submitBtn.innerText = "💾 Save Order & Set Reminder";
-      }
-    }
+/* ============================================================
+   Event wiring — delegated, so re-rendered HTML keeps working
+   ============================================================ */
+document.addEventListener('click', function (e) {
+  var t = e.target.closest('[data-category], [data-step], [data-date], [data-range], [data-remove-custom], ' +
+    '[data-call], [data-wa], [data-maps], [data-edit], [data-deliver], [data-cancel], ' +
+    '[data-advance], [data-paid], .tabbar button');
+  if (!t) return;
+  var d = t.dataset;
 
-    // Initial render
-    renderMenuItems('Biryani');
-  </script>
+  if (d.category) { currentCategory = d.category; renderCategories(); return; }
+  if (d.step) { stepQty(d.step, Number(d.dir)); return; }
+  if (d.date) { $('deliveryDate').value = d.date; renderDateChips(); haptic('light'); return; }
+  if (d.removeCustom !== undefined) { removeCustomItem(Number(d.removeCustom)); return; }
+
+  if (d.range) {
+    currentRange = d.range;
+    document.querySelectorAll('#rangeChips .pill').forEach(function (p) {
+      p.classList.toggle('active', p.dataset.range === d.range);
+    });
+    loadOrders();
+    return;
+  }
+
+  if (d.call) { openLink('tel:+' + d.call); return; }
+  if (d.wa) { openLink('https://wa.me/' + d.wa); return; }
+  if (d.maps) { openLink('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(d.maps)); return; }
+  if (d.edit) { editOrder(d.edit); return; }
+  if (d.deliver) { changeStatus(d.deliver, 'Delivered', 'Mark this order as delivered?'); return; }
+  if (d.advance) { advanceStatus(d.advance); return; }
+  if (d.paid) { markPaid(d.paid); return; }
+  if (d.cancel) { changeStatus(d.cancel, 'Cancelled', 'Cancel this order? This cannot be undone from the app.'); return; }
+  if (d.screen) { showScreen(d.screen); return; }
+});
+
+document.addEventListener('change', function (e) {
+  if (e.target.dataset && e.target.dataset.qty) setQty(e.target.dataset.qty, e.target.value);
+});
+
+$('addCustomBtn').addEventListener('click', addCustomItem);
+$('submitBtn').addEventListener('click', submitOrder);
+$('retryPendingBtn').addEventListener('click', function () { flushPending(false); });
+$('customerPhone').addEventListener('input', scheduleCustomerLookup);
+$('deliveryDate').addEventListener('change', renderDateChips);
+$('advancePaid').addEventListener('input', refreshBalance);
+$('totalAmount').addEventListener('input', function () {
+  totalManuallyEdited = true;
+  refreshBalance();
+});
+
+window.addEventListener('online', function () { flushPending(true); });
+
+if (tg && tg.MainButton) {
+  tg.MainButton.onClick(submitOrder);
+  $('submitWrap').hidden = true;
+}
+
+/* ============================================================
+   Boot
+   ============================================================ */
+$('phonePrefix').textContent = '+' + COUNTRY_CODE;
+$('deliveryDate').value = localDate(1);
+$('deliveryTime').value = '12:30';
+renderDateChips();
+loadMenu();
+refreshSummary();
+renderPendingBanner();
+flushPending(true);
+if (!isConfigured()) $('configBanner').hidden = false;
+</script>
 </body>
 </html>

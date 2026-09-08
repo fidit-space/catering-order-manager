@@ -20,3 +20,7 @@ npm-debug.log*
 # Clasp / Google Apps Script local files
 .clasp.json
 .claspignore
+
+# Secrets live in Apps Script > Project Settings > Script Properties,
+# never in backend/google_apps_script.js. If you ever paste a bot token
+# into that file for testing, clear it before committing.
