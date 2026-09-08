@@ -66,7 +66,9 @@ module.exports = function (t) {
   t.check('date stored as plain text', orderRow[COL.DATE] === '2026-09-09', String(orderRow[COL.DATE]));
   t.check('phone normalised on write', orderRow[COL.PHONE] === '94771234567', String(orderRow[COL.PHONE]));
   t.check('balance computed', orderRow[COL.BALANCE] === 37000, String(orderRow[COL.BALANCE]));
-  t.check('payment status = Advance', orderRow[COL.PAYMENT] === 'Advance', String(orderRow[COL.PAYMENT]));
+  t.check('payment status reflects a part payment', orderRow[COL.PAYMENT] === 'Part paid', String(orderRow[COL.PAYMENT]));
+  t.check('the advance was recorded as a ledger event, not just a cell',
+    readLedger_().some(r => r[LED.ORDER] === res.orderId && r[LED.TYPE] === 'Payment In' && num_(r[LED.AMOUNT]) === 20000));
   t.check('customer upserted', SS.getSheetByName('Customers').rows.length === 2);
 
   const alert = SENT.find(s => s.method === 'sendMessage');

@@ -170,7 +170,9 @@
     .money-row { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; font-size: 0.92rem; }
     .money-row + .money-row { border-top: 1px solid var(--border); }
     .money-row.big { font-size: 1.12rem; font-weight: 800; }
-    .money-row.big span:last-child { color: var(--danger); }
+    .money-row.big.due span:last-child { color: var(--danger); }
+    .money-row.big.profit span:last-child { color: var(--success); }
+    .money-row.big.loss span:last-child { color: var(--danger); }
 
     /* ---------- Order cards ---------- */
     .order-card {
@@ -209,6 +211,30 @@
     .stage-out-for-delivery { background: rgba(139,92,246,0.16); color: #6d28d9; }
     .stage-delivered { background: rgba(16,185,129,0.16); color: #047857; }
     .stage-tentative { background: rgba(100,116,139,0.16); color: var(--hint); }
+
+    .cashbox {
+      margin-top: 14px; padding: 16px; border-radius: 12px;
+      background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.35);
+      text-align: center;
+    }
+    .cashbox-label { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--hint); }
+    .cashbox-amount { font-size: 2rem; font-weight: 800; margin: 6px 0 4px;
+      font-variant-numeric: tabular-nums; color: #047857; }
+    .cashbox-hint { font-size: 0.75rem; color: var(--hint); line-height: 1.4; }
+
+    .age-group { margin-bottom: 14px; }
+    .age-group:last-child { margin-bottom: 0; }
+    .age-head { display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 0.78rem; font-weight: 800; margin-bottom: 6px; }
+    .age-row { display: flex; justify-content: space-between; gap: 10px;
+      padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+    .age-row:last-child { border-bottom: none; }
+    .age-row .who { flex: 1; min-width: 0; }
+    .age-row .days { font-size: 0.74rem; color: var(--hint); }
+
+    .margin-note { font-size: 0.78rem; color: var(--hint); margin-top: 5px; }
+    .margin-note.thin { color: var(--danger); font-weight: 700; }
 
     .empty { text-align: center; padding: 44px 16px; color: var(--hint); font-size: 0.9rem; }
     .empty .big { font-size: 2.6rem; display: block; margin-bottom: 10px; }
@@ -345,7 +371,7 @@
         </div>
       </div>
       <div class="money-row"><span>Menu total</span><span id="calcTotal">Rs. 0</span></div>
-      <div class="money-row big"><span>Balance due</span><span id="calcBalance">Rs. 0</span></div>
+      <div class="money-row big due"><span>Balance due</span><span id="calcBalance">Rs. 0</span></div>
       <div class="form-group" style="margin-top:12px">
         <label for="specialNotes">Notes — spice, packing, delivery</label>
         <textarea id="specialNotes" rows="2" placeholder="e.g. medium spice, 5 party trays, bring spoons"></textarea>
@@ -373,6 +399,52 @@
     <div id="ordersList"></div>
   </div>
 
+  <!-- ============ SCREEN: MONEY ============ -->
+  <div id="screenMoney" hidden>
+    <header>
+      <h1>💰 Money</h1>
+      <p id="moneySubtitle">Loading…</p>
+    </header>
+
+    <section class="card">
+      <div class="card-title"><span>Today</span><span id="cashDate" class="badge grey"></span></div>
+      <div class="money-row"><span>Received</span><span id="todayIn">—</span></div>
+      <div class="money-row"><span>Spent</span><span id="todayOut">—</span></div>
+      <div class="money-row big"><span>Profit</span><span id="todayProfit">—</span></div>
+      <div class="cashbox">
+        <div class="cashbox-label">Cash box should hold</div>
+        <div class="cashbox-amount" id="cashInHand">—</div>
+        <div class="cashbox-hint">Count it. A difference means something went unrecorded.</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-title"><span>Record a cost</span><span>💸</span></div>
+      <div class="grid-2">
+        <input type="number" id="expenseAmount" inputmode="decimal" placeholder="Amount" />
+        <select id="expenseMethod"></select>
+      </div>
+      <div class="form-group" style="margin-top:10px">
+        <input type="text" id="expenseDesc" placeholder="What was it for? e.g. chicken, gas" />
+      </div>
+      <div class="pills" id="expenseCategories" style="margin-bottom:10px"></div>
+      <button type="button" class="mini-btn primary" style="width:100%;min-height:48px" id="saveExpenseBtn">Save cost</button>
+    </section>
+
+    <section class="card">
+      <div class="card-title"><span>This month</span><span>📊</span></div>
+      <div class="money-row"><span>Received</span><span id="monthIn">—</span></div>
+      <div class="money-row"><span>Costs</span><span id="monthOut">—</span></div>
+      <div class="money-row big"><span>Profit</span><span id="monthProfit">—</span></div>
+      <div class="money-row"><span>Margin</span><span id="monthMargin">—</span></div>
+    </section>
+
+    <section class="card">
+      <div class="card-title"><span>Owed to you</span><span id="agingTotal" class="badge">—</span></div>
+      <div id="agingList"></div>
+    </section>
+  </div>
+
   <!-- ============ BOTTOM BARS ============ -->
   <div class="submit-wrap" id="submitWrap">
     <button type="button" class="submit-btn" id="submitBtn">💾 Save order</button>
@@ -381,6 +453,7 @@
   <nav class="tabbar">
     <button type="button" data-screen="new" class="active"><span class="ico">🍲</span>New order</button>
     <button type="button" data-screen="orders"><span class="ico">📅</span>Orders</button>
+    <button type="button" data-screen="money"><span class="ico">💰</span>Money</button>
   </nav>
 
 <script>
@@ -408,6 +481,11 @@ if (tg) {
 if (!tg || tg.platform === 'unknown') {
   var b = document.getElementById('consoleBanner');
   if (b) b.hidden = false;
+}
+
+/** True only when Telegram will actually render its own chrome for us. */
+function inTelegram() {
+  return !!(tg && tg.MainButton && tg.platform && tg.platform !== 'unknown');
 }
 
 function haptic(style) {
@@ -1037,6 +1115,12 @@ function renderOrders(orders) {
         (o.deliveryAddress ? '<div class="order-items">📍 ' + esc(o.deliveryAddress) + '</div>' : '') +
         (Number(o.balanceDue) > 0 ? '<div class="order-items">💰 <strong>' + money(o.balanceDue) + '</strong> to collect</div>' : '') +
         (o.specialNotes ? '<div class="order-items">📝 ' + esc(o.specialNotes) + '</div>' : '') +
+        (o.margin !== null && o.margin !== undefined
+          ? '<div class="margin-note' + (o.totalAmount > 0 && o.margin / o.totalAmount < 0.2 ? ' thin' : '') + '">' +
+              'Est. margin ' + money(o.margin) +
+              (o.totalAmount > 0 ? ' · ' + Math.round((o.margin / o.totalAmount) * 100) + '%' : '') +
+            '</div>'
+          : '') +
         '<div class="order-actions">' +
           '<button type="button" class="mini-btn" data-call="' + esc(o.customerPhone) + '">📞 Call</button>' +
           '<button type="button" class="mini-btn" data-wa="' + esc(o.customerPhone) + '">💬 WhatsApp</button>' +
@@ -1096,11 +1180,14 @@ function advanceStatus(orderId) {
 
 function markPaid(orderId) {
   var o = findOrder(orderId);
-  var amount = o ? money(o.balanceDue) : 'the balance';
+  var amount = o ? money(o.balanceDue) : 'the outstanding balance';
   confirmAsk('Record ' + amount + ' as received from ' + (o ? o.customerName : 'this customer') + '?', function (yes) {
     if (!yes) return;
     apiPost({ action: 'markPaid', orderId: orderId })
-      .then(function () { haptic('medium'); loadOrders(); })
+      .then(function () {
+        haptic('medium');
+        if ($('screenMoney').hidden) loadOrders(); else loadMoney();
+      })
       .catch(function (err) { notify('Could not update', err.message); });
   });
 }
@@ -1115,24 +1202,151 @@ function changeStatus(orderId, status, question) {
 }
 
 /* ============================================================
+   Money screen
+   ============================================================ */
+var moneyMeta = { categories: [], methods: [] };
+var chosenCategory = '';
+
+function loadMoney() {
+  if (!isConfigured()) {
+    $('moneySubtitle').textContent = 'Setup incomplete';
+    return;
+  }
+  $('moneySubtitle').textContent = 'Loading…';
+
+  apiGet('money').then(function (data) {
+    moneyMeta.categories = data.categories || [];
+    moneyMeta.methods = data.methods || ['Cash'];
+    renderMoney(data);
+  }).catch(function (err) {
+    $('moneySubtitle').textContent = 'Could not load — ' + err.message;
+  });
+}
+
+function renderMoney(data) {
+  var today = data.today || {};
+  var month = data.month || {};
+
+  $('moneySubtitle').textContent = 'Cash, costs and what you are owed';
+  $('cashDate').textContent = new Date().toLocaleDateString(undefined,
+    { weekday: 'short', day: 'numeric', month: 'short' });
+
+  $('todayIn').textContent = money(today.paymentsIn);
+  $('todayOut').textContent = money(today.expenses);
+  $('todayProfit').textContent = money(today.profit);
+  setProfitTone('todayProfit', today.profit);
+  $('cashInHand').textContent = money(today.cashInHand);
+
+  $('monthIn').textContent = money(month.paymentsIn);
+  $('monthOut').textContent = money(month.expenses);
+  $('monthProfit').textContent = money(month.profit);
+  setProfitTone('monthProfit', month.profit);
+  $('monthMargin').textContent = (month.marginPct || 0) + '%';
+
+  // Expense form options
+  if (!$('expenseMethod').options.length) {
+    $('expenseMethod').innerHTML = moneyMeta.methods.map(function (m) {
+      return '<option value="' + esc(m) + '">' + esc(m) + '</option>';
+    }).join('');
+  }
+  $('expenseCategories').innerHTML =
+    '<div class="pill' + (chosenCategory === '' ? ' active' : '') + '" data-expcat="">Auto</div>' +
+    moneyMeta.categories.map(function (c) {
+      return '<div class="pill' + (chosenCategory === c ? ' active' : '') + '" data-expcat="' + esc(c) + '">' + esc(c) + '</div>';
+    }).join('');
+
+  renderAging(data.aging || {});
+}
+
+/** Profit reads green, a loss reads red — never the balance-due red by accident. */
+function setProfitTone(id, value) {
+  var row = $(id).parentNode;
+  row.classList.toggle('profit', Number(value) >= 0);
+  row.classList.toggle('loss', Number(value) < 0);
+}
+
+function renderAging(aging) {
+  $('agingTotal').textContent = money(aging.total);
+
+  var groups = [
+    { key: 'older', label: '🔴 More than a month' },
+    { key: 'month', label: '🟠 1–4 weeks' },
+    { key: 'week', label: '🟡 This week' },
+    { key: 'current', label: '⚪ Not due yet' }
+  ].filter(function (g) { return (aging[g.key] || []).length; });
+
+  if (!groups.length) {
+    $('agingList').innerHTML = '<div class="empty"><span class="big">✅</span>Nothing outstanding.</div>';
+    return;
+  }
+
+  $('agingList').innerHTML = groups.map(function (g) {
+    var rows = aging[g.key].slice().sort(function (a, b) { return b.days - a.days; });
+    var sum = rows.reduce(function (t, x) { return t + x.balance; }, 0);
+    return '<div class="age-group">' +
+      '<div class="age-head"><span>' + esc(g.label) + '</span><span>' + money(sum) + '</span></div>' +
+      rows.map(function (x) {
+        return '<div class="age-row">' +
+          '<span class="who">' + esc(x.name) +
+            (x.days > 0 ? ' <span class="days">' + x.days + 'd</span>' : '') + '</span>' +
+          '<strong>' + money(x.balance) + '</strong>' +
+          '<button type="button" class="mini-btn" style="flex:0 0 auto;min-width:64px" data-wa="' + esc(x.phone) + '">💬</button>' +
+          '<button type="button" class="mini-btn ok" style="flex:0 0 auto;min-width:64px" data-paid="' + esc(x.orderId) + '">💵</button>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }).join('');
+}
+
+function saveExpense() {
+  var amount = Number($('expenseAmount').value) || 0;
+  var description = $('expenseDesc').value.trim();
+
+  if (amount <= 0) { notify('Amount needed', 'Enter how much you spent.'); return; }
+  if (!description) { notify('What was it for?', 'A word or two is enough — chicken, gas, driver.'); return; }
+
+  apiPost({
+    action: 'recordExpense',
+    amount: amount,
+    description: description,
+    category: chosenCategory || null,
+    method: $('expenseMethod').value
+  }).then(function (res) {
+    haptic('medium');
+    $('expenseAmount').value = '';
+    $('expenseDesc').value = '';
+    chosenCategory = '';
+    notify('Recorded', money(amount) + ' — ' + res.category);
+    loadMoney();
+  }).catch(function (err) {
+    notify('Could not save', err.message);
+  });
+}
+
+/* ============================================================
    Screens & main button
    ============================================================ */
 function showScreen(name) {
   var isNew = name === 'new';
   $('screenNew').hidden = !isNew;
-  $('screenOrders').hidden = isNew;
-  $('submitWrap').hidden = !isNew || !!(tg && tg.MainButton);
+  $('screenOrders').hidden = name !== 'orders';
+  $('screenMoney').hidden = name !== 'money';
+  // Only surrender the in-page button when Telegram's own button will really
+  // appear. In a browser tg exists but MainButton is inert, which previously
+  // left the page with no way to save at all.
+  $('submitWrap').hidden = !isNew || inTelegram();
 
   document.querySelectorAll('.tabbar button').forEach(function (b) {
     b.classList.toggle('active', b.dataset.screen === name);
   });
 
   updateMainButton();
-  if (!isNew) loadOrders();
+  if (name === 'orders') loadOrders();
+  if (name === 'money') loadMoney();
 }
 
 function updateMainButton() {
-  if (!tg || !tg.MainButton) return;
+  if (!inTelegram()) return;
   if ($('screenNew').hidden) { tg.MainButton.hide(); return; }
 
   var count = orderLines().length;
@@ -1148,7 +1362,7 @@ function updateMainButton() {
 document.addEventListener('click', function (e) {
   var t = e.target.closest('[data-category], [data-step], [data-date], [data-range], [data-remove-custom], ' +
     '[data-call], [data-wa], [data-maps], [data-edit], [data-deliver], [data-cancel], ' +
-    '[data-advance], [data-paid], .tabbar button');
+    '[data-advance], [data-paid], [data-expcat], .tabbar button');
   if (!t) return;
   var d = t.dataset;
 
@@ -1173,6 +1387,13 @@ document.addEventListener('click', function (e) {
   if (d.deliver) { changeStatus(d.deliver, 'Delivered', 'Mark this order as delivered?'); return; }
   if (d.advance) { advanceStatus(d.advance); return; }
   if (d.paid) { markPaid(d.paid); return; }
+  if (d.expcat !== undefined) {
+    chosenCategory = d.expcat;
+    document.querySelectorAll('#expenseCategories .pill').forEach(function (p) {
+      p.classList.toggle('active', p.dataset.expcat === d.expcat);
+    });
+    return;
+  }
   if (d.cancel) { changeStatus(d.cancel, 'Cancelled', 'Cancel this order? This cannot be undone from the app.'); return; }
   if (d.screen) { showScreen(d.screen); return; }
 });
@@ -1182,6 +1403,7 @@ document.addEventListener('change', function (e) {
 });
 
 $('addCustomBtn').addEventListener('click', addCustomItem);
+$('saveExpenseBtn').addEventListener('click', saveExpense);
 $('submitBtn').addEventListener('click', submitOrder);
 $('retryPendingBtn').addEventListener('click', function () { flushPending(false); });
 $('customerPhone').addEventListener('input', scheduleCustomerLookup);
@@ -1194,7 +1416,7 @@ $('totalAmount').addEventListener('input', function () {
 
 window.addEventListener('online', function () { flushPending(true); });
 
-if (tg && tg.MainButton) {
+if (inTelegram()) {
   tg.MainButton.onClick(submitOrder);
   $('submitWrap').hidden = true;
 }

@@ -26,6 +26,7 @@ var SHEETS = {
   CUSTOMERS: 'Customers',
   MENU: 'Menu',
   SETTINGS: 'Settings',
+  LEDGER: 'Ledger',
   LOG: 'Log'
 };
 
@@ -34,16 +35,54 @@ var COL = {
   ID: 0, CREATED: 1, DATE: 2, TIME: 3, NAME: 4, PHONE: 5, ADDRESS: 6,
   ITEMS: 7, TOTAL: 8, ADVANCE: 9, BALANCE: 10, STATUS: 11, NOTES: 12,
   DIGEST_SENT: 13, DISPATCH_SENT: 14, DELIVERED_AT: 15, PAYMENT: 16,
-  UPDATED: 17, ITEMS_JSON: 18, CHASE_SENT: 19, PAID_AT: 20
+  UPDATED: 17, ITEMS_JSON: 18, CHASE_SENT: 19, PAID_AT: 20,
+  COST: 21, MARGIN: 22
 };
 
+/*
+ * "Received" and "Balance Due" are MIRRORS, not sources of truth. The truth is
+ * the Ledger tab: every payment, refund and expense is an append-only row.
+ * These two columns are recalculated from it so the sheet stays readable at a
+ * glance, but an audit reads the Ledger.
+ */
 var ORDER_HEADERS = [
   'Order ID', 'Created At', 'Delivery Date', 'Delivery Time', 'Customer Name',
-  'Customer Phone', 'Delivery Address', 'Items', 'Total Amount', 'Advance Paid',
+  'Customer Phone', 'Delivery Address', 'Items', 'Total Amount', 'Received',
   'Balance Due', 'Status', 'Notes', 'Digest Sent', 'Dispatch Sent',
   'Delivered At', 'Payment Status', 'Updated At', 'Items JSON',
-  'Payment Chase Sent', 'Paid At'
+  'Payment Chase Sent', 'Paid At', 'Est. Food Cost', 'Est. Margin'
 ];
+
+var LEDGER_HEADERS = [
+  'Entry ID', 'Timestamp', 'Type', 'Order ID', 'Category', 'Description',
+  'Amount', 'Method', 'Recorded By', 'Note'
+];
+
+var LED = {
+  ID: 0, TIMESTAMP: 1, TYPE: 2, ORDER: 3, CATEGORY: 4, DESCRIPTION: 5,
+  AMOUNT: 6, METHOD: 7, BY: 8, NOTE: 9
+};
+
+/** Money in raises the balance received; money out lowers it. */
+var LEDGER_TYPES = {
+  'Payment In': 1,
+  'Refund Out': -1,
+  'Expense': 0,      // business cost, not tied to an order's balance
+  'Adjustment': 0    // audit note only, never moves money
+};
+
+var PAYMENT_METHODS = ['Cash', 'Bank', 'Card', 'Other'];
+
+var EXPENSE_CATEGORIES = ['Ingredients', 'Gas', 'Transport', 'Packaging', 'Staff', 'Other'];
+
+/** Keywords that sort a typed expense into a category without extra taps. */
+var EXPENSE_HINTS = {
+  Ingredients: ['chicken', 'mutton', 'beef', 'rice', 'spice', 'oil', 'vegetable', 'egg', 'fish', 'curd', 'market'],
+  Gas: ['gas', 'cylinder', 'fuel'],
+  Transport: ['transport', 'delivery', 'driver', 'petrol', 'diesel', 'three wheel', 'tuk'],
+  Packaging: ['box', 'container', 'packing', 'packaging', 'spoon', 'bag', 'foil'],
+  Staff: ['staff', 'helper', 'wages', 'salary', 'labour', 'labor']
+};
 
 /**
  * The kitchen pipeline, in order. An order advances one step at a time from a
@@ -65,7 +104,9 @@ var CUSTOMER_HEADERS = [
   'Phone', 'Customer Name', 'Last Address', 'Total Orders', 'First Seen', 'Last Order Date'
 ];
 
-var MENU_HEADERS = ['Category', 'Item', 'Unit', 'Rate', 'Step', 'Active'];
+// Cost is APPENDED, not inserted, so a Menu tab created before this existed
+// keeps working — the column simply reads as blank until it is filled in.
+var MENU_HEADERS = ['Category', 'Item', 'Unit', 'Rate', 'Step', 'Active', 'Cost'];
 
 var SETTINGS_HEADERS = ['Setting', 'Value', 'What it does'];
 
@@ -81,22 +122,22 @@ var DEFAULT_SETTINGS = [
 // Dishes seeded into the Menu sheet on first run. After that the SHEET wins —
 // edit the Menu tab from the Google Sheets phone app, no code change needed.
 var DEFAULT_MENU = [
-  ['Biryani',  'Chicken Dum Biryani',            'Pax',      950,  5,  'YES'],
-  ['Biryani',  'Mutton Dum Biryani',             'Pax',     1350,  5,  'YES'],
-  ['Biryani',  'Beef Biryani',                   'Pax',     1150,  5,  'YES'],
-  ['Biryani',  'Egg / Veg Biryani',              'Pax',      700,  5,  'YES'],
-  ['Mandhi',   'Chicken Mandhi (Quarter)',       'Packs',    900,  1,  'YES'],
-  ['Mandhi',   'Chicken Mandhi (Half)',          'Packs',   1700,  1,  'YES'],
-  ['Mandhi',   'Chicken Mandhi (Full)',          'Packs',   3200,  1,  'YES'],
-  ['Mandhi',   'Mutton Mandhi Special',          'Packs',   2400,  1,  'YES'],
-  ['Rice',     'Chicken Fried Rice',             'Portions', 750,  5,  'YES'],
-  ['Rice',     'Seafood Mixed Fried Rice',       'Portions', 950,  5,  'YES'],
-  ['Rice',     'Egg / Vegetable Fried Rice',     'Portions', 600,  5,  'YES'],
-  ['Curry',    'Butter Chicken Gravy',           'Litres',  2200,  1,  'YES'],
-  ['Curry',    'Chilli Chicken (Dry / Gravy)',   'Portions', 800,  5,  'YES'],
-  ['Curry',    'Raita & Mint Chutney',           'Bowls',    350,  1,  'YES'],
-  ['Dessert',  'Watalappam Party Pack',          'Cups',     250,  5,  'YES'],
-  ['Dessert',  'Gulab Jamun (Catering Pack)',    'Pieces',    60, 10,  'YES']
+  ['Biryani',  'Chicken Dum Biryani',            'Pax',      950,  5,  'YES', 550],
+  ['Biryani',  'Mutton Dum Biryani',             'Pax',     1350,  5,  'YES', 780],
+  ['Biryani',  'Beef Biryani',                   'Pax',     1150,  5,  'YES', 670],
+  ['Biryani',  'Egg / Veg Biryani',              'Pax',      700,  5,  'YES', 410],
+  ['Mandhi',   'Chicken Mandhi (Quarter)',       'Packs',    900,  1,  'YES', 520],
+  ['Mandhi',   'Chicken Mandhi (Half)',          'Packs',   1700,  1,  'YES', 990],
+  ['Mandhi',   'Chicken Mandhi (Full)',          'Packs',   3200,  1,  'YES', 1860],
+  ['Mandhi',   'Mutton Mandhi Special',          'Packs',   2400,  1,  'YES', 1390],
+  ['Rice',     'Chicken Fried Rice',             'Portions', 750,  5,  'YES', 430],
+  ['Rice',     'Seafood Mixed Fried Rice',       'Portions', 950,  5,  'YES', 550],
+  ['Rice',     'Egg / Vegetable Fried Rice',     'Portions', 600,  5,  'YES', 350],
+  ['Curry',    'Butter Chicken Gravy',           'Litres',  2200,  1,  'YES', 1280],
+  ['Curry',    'Chilli Chicken (Dry / Gravy)',   'Portions', 800,  5,  'YES', 460],
+  ['Curry',    'Raita & Mint Chutney',           'Bowls',    350,  1,  'YES', 200],
+  ['Dessert',  'Watalappam Party Pack',          'Cups',     250,  5,  'YES', 140],
+  ['Dessert',  'Gulab Jamun (Catering Pack)',    'Pieces',    60, 10,  'YES', 30]
 ];
 
 // ==================== ONE-TIME SETUP ====================
@@ -142,6 +183,7 @@ function initSheets() {
   customersSheet_();
   menuSheet_();
   settingsSheet_();
+  ledgerSheet_();
   return 'Sheets ready.';
 }
 
@@ -484,6 +526,15 @@ function doGet(e) {
       case 'health':   return json_(health_(p.key));
       case 'menu':     return json_({ status: 'ok', menu: readMenu_(), statusFlow: STATUS_FLOW, statusIcons: STATUS_ICON });
       case 'unpaid':   return json_({ status: 'ok', orders: readUnpaid_() });
+      case 'money':    return json_({
+                         status: 'ok',
+                         today: summariseMoney_(todayStr_(), todayStr_()),
+                         month: summariseMoney_(monthStartStr_(), todayStr_()),
+                         aging: receivablesAging_(),
+                         categories: EXPENSE_CATEGORIES,
+                         methods: PAYMENT_METHODS
+                       });
+      case 'ledger':   return json_({ status: 'ok', entries: recentLedger_(Number(p.limit) || 40) });
       case 'orders':   return json_({ status: 'ok', orders: readOrders_(p.from, p.to, p.limit) });
       case 'customer': return json_({ status: 'ok', customer: findCustomer_(p.phone) });
       default:         return json_({ status: 'error', message: 'Unknown action: ' + action });
@@ -546,11 +597,14 @@ function doPost(e) {
     switch (action) {
       case 'newOrder':    return json_(saveOrder_(body.order));
       case 'updateOrder': return json_(updateOrder_(body.orderId, body.order));
-      case 'cancelOrder': return json_(setOrderStatus_(body.orderId, 'Cancelled'));
+      case 'cancelOrder':   return json_(cancelOrder_(body.orderId));
+      case 'recordPayment': return json_(recordPayment_(body.orderId, body.amount, body.method, body.actorId, body.note));
+      case 'recordRefund':  return json_(recordRefund_(body.orderId, body.amount, body.method, body.actorId, body.note));
+      case 'recordExpense': return json_(recordExpense_(body.amount, body.description, body.category, body.method, body.actorId, body.orderId));
       case 'markDelivered': return json_(setOrderStatus_(body.orderId, 'Delivered'));
       case 'advanceStatus': return json_(advanceOrderStatus_(body.orderId));
       case 'setStatus':     return json_(setOrderStatus_(body.orderId, body.newStatus));
-      case 'markPaid':      return json_(markOrderPaid_(body.orderId));
+      case 'markPaid':      return json_(markOrderPaid_(body.orderId, body.method, body.actorId));
       default: return json_({ status: 'error', message: 'Unknown action: ' + action });
     }
   } catch (err) {
@@ -584,24 +638,41 @@ function saveOrder_(order) {
     row[COL.PHONE] = normalizePhone_(order.customerPhone);
     row[COL.ADDRESS] = order.deliveryAddress || '';
     row[COL.ITEMS] = order.itemsSummary || summariseItems_(items);
+    var foodCost = estimateFoodCost_(items);
     row[COL.TOTAL] = total;
-    row[COL.ADVANCE] = advance;
-    row[COL.BALANCE] = total - advance;
+    row[COL.ADVANCE] = 0;                 // filled in by syncOrderMoney_ below
+    row[COL.BALANCE] = total;
+    row[COL.COST] = foodCost === null ? '' : foodCost;
+    row[COL.MARGIN] = foodCost === null ? '' : total - foodCost;
     row[COL.STATUS] = order.prepStatus || 'Confirmed';
     row[COL.NOTES] = order.specialNotes || '';
     row[COL.DIGEST_SENT] = 'NO';
     row[COL.DISPATCH_SENT] = 'NO';
     row[COL.DELIVERED_AT] = '';
-    row[COL.PAYMENT] = advance >= total && total > 0 ? 'Paid' : (advance > 0 ? 'Advance' : 'Unpaid');
+    row[COL.PAYMENT] = 'Unpaid';
     row[COL.UPDATED] = nowStr_();
     row[COL.ITEMS_JSON] = JSON.stringify(items);
 
     sheet.appendRow(row);
 
+    // An advance is money that moved, so it is a ledger event — not a number
+    // typed into a cell. This is what makes it auditable later.
+    if (advance > 0) {
+      addLedgerEntry_({
+        type: 'Payment In', orderId: orderId, category: 'Advance',
+        description: order.customerName, amount: advance,
+        method: order.paymentMethod || 'Cash', by: order.recordedBy || 'owner'
+      });
+    }
+    var money = syncOrderMoney_(orderId);
+    row[COL.ADVANCE] = money.received;
+    row[COL.BALANCE] = money.balance;
+    row[COL.PAYMENT] = money.paymentStatus;
+
     upsertCustomer_(order.customerName, row[COL.PHONE], order.deliveryAddress);
     sendNewOrderAlert_(orderId, row);
 
-    return { status: 'success', orderId: orderId };
+    return { status: 'success', orderId: orderId, received: money.received, balance: money.balance };
   } finally {
     lock.releaseLock();
   }
@@ -635,13 +706,18 @@ function updateOrder_(orderId, order) {
         row[COL.ITEMS_JSON] = JSON.stringify(order.itemsJson);
         row[COL.ITEMS] = order.itemsSummary || summariseItems_(order.itemsJson);
       }
-      if (order.totalAmount !== undefined || order.advancePaid !== undefined) {
-        var total = order.totalAmount !== undefined ? num_(order.totalAmount) : num_(row[COL.TOTAL]);
-        var advance = order.advancePaid !== undefined ? num_(order.advancePaid) : num_(row[COL.ADVANCE]);
-        row[COL.TOTAL] = total;
-        row[COL.ADVANCE] = advance;
-        row[COL.BALANCE] = total - advance;
-        row[COL.PAYMENT] = advance >= total && total > 0 ? 'Paid' : (advance > 0 ? 'Advance' : 'Unpaid');
+      // The agreed price can change — a discount, a dispute, a miscount. Each
+      // change is recorded so the reason survives, instead of the old figure
+      // silently disappearing.
+      var priceChanged = false;
+      if (order.totalAmount !== undefined && num_(order.totalAmount) !== num_(row[COL.TOTAL])) {
+        priceChanged = { from: num_(row[COL.TOTAL]), to: num_(order.totalAmount) };
+        row[COL.TOTAL] = num_(order.totalAmount);
+      }
+      if (order.itemsJson || priceChanged) {
+        var cost = estimateFoodCost_(order.itemsJson || JSON.parse(row[COL.ITEMS_JSON] || '[]'));
+        row[COL.COST] = cost === null ? '' : cost;
+        row[COL.MARGIN] = cost === null ? '' : num_(row[COL.TOTAL]) - cost;
       }
 
       // Moving the delivery time re-arms the reminders for this order.
@@ -652,7 +728,21 @@ function updateOrder_(orderId, order) {
       row[COL.UPDATED] = nowStr_();
 
       sheet.getRange(i + 1, 1, 1, ORDER_HEADERS.length).setValues([row]);
-      return { status: 'success', orderId: orderId, remindersReset: timeChanged };
+
+      if (priceChanged) {
+        addLedgerEntry_({
+          type: 'Adjustment', orderId: orderId, category: 'Price change',
+          description: row[COL.NAME],
+          amount: Math.abs(priceChanged.to - priceChanged.from),
+          by: order.recordedBy || 'owner',
+          note: 'Total changed from ' + CURRENCY + ' ' + fmtMoney_(priceChanged.from) +
+                ' to ' + CURRENCY + ' ' + fmtMoney_(priceChanged.to) +
+                (order.specialNotes ? ' — ' + order.specialNotes : '')
+        });
+        syncOrderMoney_(orderId);
+      }
+
+      return { status: 'success', orderId: orderId, remindersReset: timeChanged, priceChanged: !!priceChanged };
     }
     throw new Error('Order not found: ' + orderId);
   } finally {
@@ -679,6 +769,45 @@ function setOrderStatus_(orderId, status) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * Cancelling never quietly keeps the customer's money. If anything was
+ * received, the owner is told exactly how much and offered a one-tap refund —
+ * previously that balance simply vanished from every view in the system.
+ */
+function cancelOrder_(orderId) {
+  var order = findOrderRow_(orderId);
+  if (!order) throw new Error('Order not found: ' + orderId);
+
+  var received = orderReceived_(orderId);
+  var result = setOrderStatus_(orderId, 'Cancelled');
+  result.receivedHeld = received;
+
+  if (received > 0) {
+    sendTelegram_(ownerChat_(),
+      '⚠️ <b>Cancelled order still holds the customer’s money</b>\n' +
+      '━━━━━━━━━━━━━━━━━━━━━\n' +
+      esc_(order[COL.NAME]) + ' paid you <b>' + CURRENCY + ' ' + fmtMoney_(received) + '</b>.\n\n' +
+      'Refund it, or keep it and record why.',
+      { inline_keyboard: [[
+        { text: '💸 Refund ' + CURRENCY + ' ' + fmtMoney_(received), callback_data: 'refund_' + orderId },
+        { text: '💬 Message', url: 'https://wa.me/' + String(order[COL.PHONE]) }
+      ]] });
+  }
+  return result;
+}
+
+/** The most recent ledger rows, newest first, for the app's money screen. */
+function recentLedger_(limit) {
+  var rows = readLedger_();
+  return rows.slice(-Math.max(1, limit)).reverse().map(function (r) {
+    return {
+      entryId: r[LED.ID], timestamp: String(r[LED.TIMESTAMP]), type: r[LED.TYPE],
+      orderId: r[LED.ORDER], category: r[LED.CATEGORY], description: r[LED.DESCRIPTION],
+      amount: num_(r[LED.AMOUNT]), method: r[LED.METHOD], by: r[LED.BY], note: r[LED.NOTE]
+    };
+  });
 }
 
 /** Moves an order one step along the kitchen pipeline. */
@@ -711,29 +840,25 @@ function orderStatus_(orderId) {
 }
 
 /** Records the balance as settled. Used from the app and from Telegram. */
-function markOrderPaid_(orderId) {
-  // Locked for the same reason setOrderStatus_ is: this reads the row, then
-  // writes five cells back. Without the lock a concurrent updateOrder_ can
-  // land in between and have its changes overwritten.
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    var sheet = ordersSheet_();
-    var data = sheet.getDataRange().getValues();
-    for (var i = 1; i < data.length; i++) {
-      if (data[i][COL.ID] !== orderId) continue;
-      var total = num_(data[i][COL.TOTAL]);
-      sheet.getRange(i + 1, COL.ADVANCE + 1).setValue(total);
-      sheet.getRange(i + 1, COL.BALANCE + 1).setValue(0);
-      sheet.getRange(i + 1, COL.PAYMENT + 1).setValue('Paid');
-      sheet.getRange(i + 1, COL.PAID_AT + 1).setValue(nowStr_());
-      sheet.getRange(i + 1, COL.UPDATED + 1).setValue(nowStr_());
-      return { status: 'success', orderId: orderId, collected: total - num_(data[i][COL.ADVANCE]) };
-    }
-    throw new Error('Order not found: ' + orderId);
-  } finally {
-    lock.releaseLock();
+/**
+ * Settles whatever is still outstanding, as a real payment event.
+ *
+ * The previous version wrote `Advance Paid = Total`, which recorded money
+ * collected on delivery as though it had been paid upfront — every
+ * advance-versus-on-delivery figure in the books was wrong after one tap.
+ * It now appends a ledger entry for the amount actually outstanding.
+ */
+function markOrderPaid_(orderId, method, by) {
+  var order = findOrderRow_(orderId);
+  if (!order) throw new Error('Order not found: ' + orderId);
+
+  var outstanding = num_(order[COL.TOTAL]) - orderReceived_(orderId);
+  if (outstanding <= 0) {
+    return { status: 'success', orderId: orderId, collected: 0, note: 'Already settled.' };
   }
+
+  var result = recordPayment_(orderId, outstanding, method || 'Cash', by, 'Settled in full', 'Settlement');
+  return { status: 'success', orderId: orderId, collected: outstanding, balance: result.balance };
 }
 
 /** Orders between two yyyy-MM-dd dates (inclusive). Defaults to today .. +30 days. */
@@ -788,6 +913,8 @@ function rowToOrder_(r) {
     balanceDue: num_(r[COL.BALANCE]),
     status: r[COL.STATUS],
     paymentStatus: r[COL.PAYMENT],
+    foodCost: r[COL.COST] === '' ? null : num_(r[COL.COST]),
+    margin: r[COL.MARGIN] === '' ? null : num_(r[COL.MARGIN]),
     specialNotes: r[COL.NOTES]
   };
 }
@@ -851,7 +978,8 @@ function readMenu_() {
       name: String(r[1]),
       unit: String(r[2] || 'Portions'),
       rate: num_(r[3]),
-      step: Number(r[4]) || 1
+      step: Number(r[4]) || 1,
+      cost: num_(r[6])          // blank on Menu tabs created before costing existed
     });
   }
   return out;
@@ -1004,6 +1132,279 @@ function buildPrepDigest_(dateStr) {
   return { message: msg, rowNumbers: rowNumbers, orderCount: orders.length };
 }
 
+// ==================== THE LEDGER ====================
+
+/*
+ * WHY A LEDGER
+ *
+ * The Orders sheet holds the CURRENT state of an order. State can be
+ * overwritten, and an overwritten number cannot be audited — you can see what
+ * an order is owed today, but not when money arrived, how much came each time,
+ * or how it was paid.
+ *
+ * The Ledger is append-only. Every rupee that moves gets a row and rows are
+ * never edited. "Received" and "Balance Due" on an order are recomputed from
+ * it. If the two ever disagree, the Ledger is right.
+ */
+
+/**
+ * Appends one money event. The only way anything is written to the Ledger.
+ *
+ * @param {Object} entry {type, orderId, category, description, amount, method, by, note}
+ */
+function addLedgerEntry_(entry) {
+  if (!LEDGER_TYPES.hasOwnProperty(entry.type)) throw new Error('Unknown ledger type: ' + entry.type);
+  var amount = num_(entry.amount);
+  if (amount < 0) throw new Error('Ledger amounts are always positive; the type decides the direction.');
+  if (entry.type !== 'Adjustment' && amount === 0) throw new Error('Enter an amount greater than zero.');
+
+  var sheet = ledgerSheet_();
+  var id = 'LED-' + Utilities.formatDate(new Date(), TZ, 'yyMMdd-HHmmss') + '-' +
+    ('000' + Math.floor(Math.random() * 1679616).toString(36).toUpperCase()).slice(-4);
+
+  sheet.appendRow([
+    id,
+    nowStr_(),
+    entry.type,
+    entry.orderId || '',
+    entry.category || '',
+    entry.description || '',
+    amount,
+    entry.method || '',
+    entry.by || 'system',
+    entry.note || ''
+  ]);
+
+  return {
+    entryId: id, type: entry.type, amount: amount,
+    category: entry.category || '', method: entry.method || '', orderId: entry.orderId || ''
+  };
+}
+
+function readLedger_() {
+  var rows = ledgerSheet_().getDataRange().getValues();
+  return rows.slice(1).filter(function (r) { return r[LED.ID]; });
+}
+
+/** Net received against one order: payments in, less refunds out. */
+function orderReceived_(orderId, rows) {
+  rows = rows || readLedger_();
+  var total = 0;
+  rows.forEach(function (r) {
+    if (r[LED.ORDER] !== orderId) return;
+    var direction = LEDGER_TYPES[r[LED.TYPE]] || 0;
+    total += direction * num_(r[LED.AMOUNT]);
+  });
+  return total;
+}
+
+/**
+ * Rewrites an order's Received / Balance / Payment Status from the Ledger.
+ * Called after anything that moves money.
+ */
+function syncOrderMoney_(orderId) {
+  var sheet = ordersSheet_();
+  var data = sheet.getDataRange().getValues();
+  var ledger = readLedger_();
+
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][COL.ID] !== orderId) continue;
+
+    var total = num_(data[i][COL.TOTAL]);
+    var received = orderReceived_(orderId, ledger);
+    var balance = total - received;
+    var status = received <= 0 ? 'Unpaid' : (balance > 0 ? 'Part paid' : (balance < 0 ? 'Overpaid' : 'Paid'));
+
+    sheet.getRange(i + 1, COL.ADVANCE + 1).setValue(received);
+    sheet.getRange(i + 1, COL.BALANCE + 1).setValue(balance);
+    sheet.getRange(i + 1, COL.PAYMENT + 1).setValue(status);
+    if (balance <= 0 && !data[i][COL.PAID_AT]) sheet.getRange(i + 1, COL.PAID_AT + 1).setValue(nowStr_());
+    sheet.getRange(i + 1, COL.UPDATED + 1).setValue(nowStr_());
+
+    return { orderId: orderId, total: total, received: received, balance: balance, paymentStatus: status };
+  }
+  throw new Error('Order not found: ' + orderId);
+}
+
+/** Records money received against an order. */
+function recordPayment_(orderId, amount, method, by, note, category) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var order = findOrderRow_(orderId);
+    if (!order) throw new Error('Order not found: ' + orderId);
+
+    addLedgerEntry_({
+      type: 'Payment In',
+      orderId: orderId,
+      category: category || (isClosed_(order[COL.STATUS]) || num_(order[COL.ADVANCE]) > 0 ? 'Settlement' : 'Advance'),
+      description: order[COL.NAME],
+      amount: amount,
+      method: method || 'Cash',
+      by: by || 'owner',
+      note: note || ''
+    });
+
+    var money = syncOrderMoney_(orderId);
+    return { status: 'success', orderId: orderId, received: money.received, balance: money.balance, paymentStatus: money.paymentStatus };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Records money given back — a cancelled order, or a complaint settled. */
+function recordRefund_(orderId, amount, method, by, note) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    if (!findOrderRow_(orderId)) throw new Error('Order not found: ' + orderId);
+
+    addLedgerEntry_({
+      type: 'Refund Out', orderId: orderId, category: 'Refund',
+      description: 'Refund to customer', amount: amount,
+      method: method || 'Cash', by: by || 'owner', note: note || ''
+    });
+
+    var money = syncOrderMoney_(orderId);
+    return { status: 'success', orderId: orderId, received: money.received, balance: money.balance };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Records a business cost. Not tied to an order unless one is given. */
+function recordExpense_(amount, description, category, method, by, orderId) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var resolved = category || categoriseExpense_(description);
+    var entry = addLedgerEntry_({
+      type: 'Expense',
+      orderId: orderId || '',
+      category: resolved,
+      description: description || 'Expense',
+      amount: amount,
+      method: method || 'Cash',
+      by: by || 'owner'
+    });
+    return { status: 'success', entryId: entry.entryId, amount: entry.amount, category: resolved, method: entry.method };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Guesses an expense category from what was typed, so nothing extra is asked. */
+function categoriseExpense_(description) {
+  var text = String(description || '').toLowerCase();
+  var found = 'Other';
+  Object.keys(EXPENSE_HINTS).forEach(function (category) {
+    if (found !== 'Other') return;
+    EXPENSE_HINTS[category].forEach(function (word) {
+      if (found === 'Other' && text.indexOf(word) !== -1) found = category;
+    });
+  });
+  return found;
+}
+
+function findOrderRow_(orderId) {
+  var data = ordersSheet_().getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][COL.ID] === orderId) return data[i];
+  }
+  return null;
+}
+
+// ==================== COST & MARGIN ====================
+
+/**
+ * Estimated food cost for an order, from the Cost column of the Menu tab.
+ * Costed automatically so margin needs no extra typing from the kitchen.
+ * Returns null when no dish on the order has a cost recorded yet.
+ */
+function estimateFoodCost_(itemsJson) {
+  var menu = readMenu_();
+  var byName = {};
+  menu.forEach(function (m) { byName[m.name] = m; });
+
+  var total = 0;
+  var known = 0;
+  (itemsJson || []).forEach(function (line) {
+    var dish = byName[line.name];
+    if (!dish || !dish.cost) return;
+    known++;
+    total += num_(line.qty) * num_(dish.cost);
+  });
+  return known ? total : null;
+}
+
+// ==================== FINANCIAL REPORTS ====================
+
+/** Totals every ledger row between two yyyy-MM-dd dates, inclusive. */
+function summariseMoney_(fromDate, toDate) {
+  var rows = readLedger_();
+  var out = {
+    from: fromDate, to: toDate,
+    paymentsIn: 0, refundsOut: 0, expenses: 0,
+    byMethod: {}, byCategory: {}, cashInHand: 0, entries: 0
+  };
+
+  rows.forEach(function (r) {
+    var day = toDateStr_(r[LED.TIMESTAMP]);
+    if (!day || day < fromDate || day > toDate) return;
+
+    var amount = num_(r[LED.AMOUNT]);
+    var type = r[LED.TYPE];
+    var method = r[LED.METHOD] || 'Other';
+    out.entries++;
+
+    if (type === 'Payment In') {
+      out.paymentsIn += amount;
+      out.byMethod[method] = (out.byMethod[method] || 0) + amount;
+      if (method === 'Cash') out.cashInHand += amount;
+    } else if (type === 'Refund Out') {
+      out.refundsOut += amount;
+      if (method === 'Cash') out.cashInHand -= amount;
+    } else if (type === 'Expense') {
+      out.expenses += amount;
+      out.byCategory[r[LED.CATEGORY] || 'Other'] = (out.byCategory[r[LED.CATEGORY] || 'Other'] || 0) + amount;
+      if (method === 'Cash') out.cashInHand -= amount;
+    }
+  });
+
+  out.netIn = out.paymentsIn - out.refundsOut;
+  out.profit = out.netIn - out.expenses;
+  out.marginPct = out.netIn > 0 ? Math.round((out.profit / out.netIn) * 100) : 0;
+  return out;
+}
+
+/** Outstanding balances grouped by how long they have been owed. */
+function receivablesAging_() {
+  var data = ordersSheet_().getDataRange().getValues();
+  var today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+  var buckets = { current: [], week: [], month: [], older: [] };
+  var total = 0;
+
+  for (var i = 1; i < data.length; i++) {
+    var r = data[i];
+    if (r[COL.STATUS] === 'Cancelled') continue;
+    var balance = num_(r[COL.BALANCE]);
+    if (balance <= 0) continue;
+
+    var due = toDateStr_(r[COL.DATE]);
+    var days = due ? Math.floor((new Date(today) - new Date(due)) / 864e5) : 0;
+    var item = { orderId: r[COL.ID], name: r[COL.NAME], phone: String(r[COL.PHONE]), balance: balance, days: days, date: due };
+
+    if (days <= 0) buckets.current.push(item);
+    else if (days <= 7) buckets.week.push(item);
+    else if (days <= 30) buckets.month.push(item);
+    else buckets.older.push(item);
+    total += balance;
+  }
+
+  buckets.total = total;
+  return buckets;
+}
+
 // ==================== MONEY: CHASING UNPAID BALANCES ====================
 
 /**
@@ -1075,42 +1476,6 @@ function checkUnpaidBalances() {
   }
 }
 
-/** Everything currently owed, whether or not it has been chased yet. */
-function sendMoneyList_() {
-  var data = ordersSheet_().getDataRange().getValues();
-  var owing = [];
-  var total = 0;
-
-  for (var i = 1; i < data.length; i++) {
-    var r = data[i];
-    if (r[COL.STATUS] === 'Cancelled') continue;
-    if (num_(r[COL.BALANCE]) <= 0) continue;
-    owing.push(r);
-    total += num_(r[COL.BALANCE]);
-  }
-
-  if (!owing.length) {
-    sendTelegram_(ownerChat_(), '✅ <b>Nothing outstanding.</b> Every order is paid up.');
-    return;
-  }
-
-  owing.sort(function (a, b) { return num_(b[COL.BALANCE]) - num_(a[COL.BALANCE]); });
-
-  var msg = '💰 <b>OUTSTANDING BALANCES</b>\n━━━━━━━━━━━━━━━━━━━━━\n';
-  var keyboard = [];
-  owing.forEach(function (r) {
-    msg += '\n<b>' + CURRENCY + ' ' + fmtMoney_(r[COL.BALANCE]) + '</b> — ' + esc_(r[COL.NAME]);
-    msg += '  <i>' + esc_(r[COL.STATUS]) + '</i>\n';
-    msg += '   ' + esc_(prettyDate_(r[COL.DATE])) + '\n';
-    keyboard.push([
-      { text: '💬 ' + String(r[COL.NAME]).substring(0, 18), url: 'https://wa.me/' + r[COL.PHONE] },
-      { text: '💵 Paid', callback_data: 'paid_' + r[COL.ID] }
-    ]);
-  });
-  msg += '━━━━━━━━━━━━━━━━━━━━━\n<b>Total: ' + CURRENCY + ' ' + fmtMoney_(total) + '</b>';
-
-  sendTelegram_(ownerChat_(), msg, { inline_keyboard: keyboard.slice(0, 20) });
-}
 
 // ==================== WEEKLY BACKUP ====================
 
@@ -1197,6 +1562,160 @@ function toCsv_(rows) {
       return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
     }).join(',');
   }).join('\n');
+}
+
+// ==================== FINANCIAL REPORTS ON TELEGRAM ====================
+
+/** Today's money, and what should physically be in the cash box. */
+function sendCashReport_(dateStr) {
+  var day = dateStr || Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+  var m = summariseMoney_(day, day);
+
+  var msg = '💵 <b>CASH REPORT</b>\n' + esc_(prettyDate_(day)) + '\n';
+  msg += '━━━━━━━━━━━━━━━━━━━━━\n';
+
+  if (!m.entries) {
+    msg += '\nNo money recorded today.\n\nUse <code>/spend 4500 chicken</code> to log a cost,\nor tap 💵 on an order to record a payment.';
+    sendTelegram_(ownerChat_(), msg);
+    return;
+  }
+
+  msg += '<b>IN</b>  ' + CURRENCY + ' ' + fmtMoney_(m.paymentsIn) + '\n';
+  Object.keys(m.byMethod).sort().forEach(function (method) {
+    msg += '   ' + esc_(method) + ': ' + CURRENCY + ' ' + fmtMoney_(m.byMethod[method]) + '\n';
+  });
+
+  if (m.refundsOut > 0) msg += '\n<b>REFUNDED</b>  ' + CURRENCY + ' ' + fmtMoney_(m.refundsOut) + '\n';
+
+  msg += '\n<b>OUT</b>  ' + CURRENCY + ' ' + fmtMoney_(m.expenses) + '\n';
+  Object.keys(m.byCategory).sort().forEach(function (category) {
+    msg += '   ' + esc_(category) + ': ' + CURRENCY + ' ' + fmtMoney_(m.byCategory[category]) + '\n';
+  });
+
+  msg += '━━━━━━━━━━━━━━━━━━━━━\n';
+  msg += '<b>Profit today: ' + CURRENCY + ' ' + fmtMoney_(m.profit) + '</b>\n';
+  msg += '\n👛 <b>Cash box should hold ' + CURRENCY + ' ' + fmtMoney_(m.cashInHand) + '</b>\n';
+  msg += '<i>Count it. If the number differs, something went unrecorded.</i>';
+
+  sendTelegram_(ownerChat_(), msg);
+}
+
+/** This month: revenue, costs, profit, and where the money went. */
+function sendMonthReport_() {
+  var now = new Date();
+  var first = Utilities.formatDate(now, TZ, 'yyyy-MM') + '-01';
+  var today = Utilities.formatDate(now, TZ, 'yyyy-MM-dd');
+  var m = summariseMoney_(first, today);
+
+  var msg = '📊 <b>THIS MONTH</b>\n' + esc_(first) + ' → ' + esc_(today) + '\n';
+  msg += '━━━━━━━━━━━━━━━━━━━━━\n';
+  msg += 'Received      ' + CURRENCY + ' ' + fmtMoney_(m.paymentsIn) + '\n';
+  if (m.refundsOut > 0) msg += 'Refunded      −' + CURRENCY + ' ' + fmtMoney_(m.refundsOut) + '\n';
+  msg += 'Costs         −' + CURRENCY + ' ' + fmtMoney_(m.expenses) + '\n';
+  msg += '━━━━━━━━━━━━━━━━━━━━━\n';
+  msg += '<b>Profit        ' + CURRENCY + ' ' + fmtMoney_(m.profit) + '</b>\n';
+  msg += '<i>Margin ' + m.marginPct + '%</i>\n';
+
+  var categories = Object.keys(m.byCategory);
+  if (categories.length) {
+    msg += '\n<b>WHERE IT WENT</b>\n';
+    categories.sort(function (a, b) { return m.byCategory[b] - m.byCategory[a]; }).forEach(function (c) {
+      var share = m.expenses > 0 ? Math.round((m.byCategory[c] / m.expenses) * 100) : 0;
+      msg += '• ' + esc_(c) + ' — ' + CURRENCY + ' ' + fmtMoney_(m.byCategory[c]) + ' <i>(' + share + '%)</i>\n';
+    });
+  }
+
+  var aging = receivablesAging_();
+  if (aging.total > 0) {
+    msg += '\n💰 <b>Still owed to you: ' + CURRENCY + ' ' + fmtMoney_(aging.total) + '</b>\n';
+    msg += '<i>Send /owed for the breakdown.</i>';
+  }
+
+  sendTelegram_(ownerChat_(), msg);
+}
+
+/** Who owes what, oldest debt first. */
+function sendAgingReport_() {
+  var aging = receivablesAging_();
+  if (!aging.total) {
+    sendTelegram_(ownerChat_(), '✅ <b>Nothing outstanding.</b> Every order is paid up.');
+    return;
+  }
+
+  var msg = '💰 <b>MONEY OWED TO YOU</b>\n<b>' + CURRENCY + ' ' + fmtMoney_(aging.total) + '</b> across all orders\n';
+  msg += '━━━━━━━━━━━━━━━━━━━━━\n';
+
+  var groups = [
+    { rows: aging.older, label: '🔴 More than a month' },
+    { rows: aging.month, label: '🟠 1–4 weeks' },
+    { rows: aging.week, label: '🟡 This week' },
+    { rows: aging.current, label: '⚪ Not due yet' }
+  ];
+
+  var keyboard = [];
+  groups.forEach(function (g) {
+    if (!g.rows.length) return;
+    var sum = g.rows.reduce(function (t, x) { return t + x.balance; }, 0);
+    msg += '\n<b>' + esc_(g.label) + '</b> — ' + CURRENCY + ' ' + fmtMoney_(sum) + '\n';
+    g.rows.sort(function (a, b) { return b.days - a.days; }).forEach(function (x) {
+      msg += '• ' + esc_(x.name) + ' — ' + CURRENCY + ' ' + fmtMoney_(x.balance);
+      if (x.days > 0) msg += ' <i>(' + x.days + 'd)</i>';
+      msg += '\n';
+      if (keyboard.length < 8) {
+        keyboard.push([
+          { text: '💬 ' + String(x.name).substring(0, 16), url: 'https://wa.me/' + x.phone },
+          { text: '💵 Paid', callback_data: 'paid_' + x.orderId }
+        ]);
+      }
+    });
+  });
+
+  sendTelegram_(ownerChat_(), msg, keyboard.length ? { inline_keyboard: keyboard } : null);
+}
+
+/**
+ * Parses "/spend 4500 chicken" or "/spend 1200 gas bank".
+ * Kept forgiving: anything slower than one line will not get used mid-service.
+ */
+function handleSpendCommand_(text, by) {
+  var body = String(text).replace(/^\/spend\s*/i, '').trim();
+  var match = body.match(/^([0-9][0-9,.]*)\s*(.*)$/);
+
+  if (!match) {
+    sendTelegram_(ownerChat_(),
+      '💸 <b>How to record a cost</b>\n\n' +
+      '<code>/spend 4500 chicken</code>\n' +
+      '<code>/spend 1200 gas cylinder</code>\n' +
+      '<code>/spend 800 driver bank</code>\n\n' +
+      'The category is worked out from what you type. ' +
+      'End with <b>bank</b> or <b>card</b> if it was not cash.');
+    return;
+  }
+
+  var amount = num_(match[1]);
+  var rest = match[2].trim() || 'Expense';
+  var method = 'Cash';
+
+  var methodMatch = rest.match(/\s(bank|card|cash|transfer)$/i);
+  if (methodMatch) {
+    method = methodMatch[1].toLowerCase() === 'transfer' ? 'Bank'
+      : methodMatch[1].charAt(0).toUpperCase() + methodMatch[1].slice(1).toLowerCase();
+    rest = rest.slice(0, methodMatch.index).trim() || 'Expense';
+  }
+
+  if (amount <= 0) {
+    sendTelegram_(ownerChat_(), '⚠️ Enter an amount greater than zero, e.g. <code>/spend 4500 chicken</code>');
+    return;
+  }
+
+  var result = recordExpense_(amount, rest, null, method, by);
+  var todaySoFar = summariseMoney_(Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'),
+                                   Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'));
+
+  sendTelegram_(ownerChat_(),
+    '✅ Recorded <b>' + CURRENCY + ' ' + fmtMoney_(amount) + '</b> — ' + esc_(rest) + '\n' +
+    '<i>' + esc_(result.category) + ' · ' + esc_(method) + '</i>\n\n' +
+    'Spent today: ' + CURRENCY + ' ' + fmtMoney_(todaySoFar.expenses));
 }
 
 // ==================== TELEGRAM MESSAGES ====================
@@ -1305,9 +1824,20 @@ function handleCallbackQuery_(query) {
 
     } else if (data.indexOf('paid_') === 0) {
       var paidId = data.substring('paid_'.length);
-      var paid = markOrderPaid_(paidId);
+      var paid = markOrderPaid_(paidId, 'Cash', describeUser_(query.from));
       answer = 'Recorded ' + CURRENCY + ' ' + fmtMoney_(paid.collected) + ' received 💵';
       stampMessage_(query, '💵 PAID IN FULL');
+
+    } else if (data.indexOf('refund_') === 0) {
+      var refundId = data.substring('refund_'.length);
+      var held = orderReceived_(refundId);
+      if (held <= 0) {
+        answer = 'Nothing to refund on this order.';
+      } else {
+        recordRefund_(refundId, held, 'Cash', describeUser_(query.from), 'Refunded on cancellation');
+        answer = 'Refund of ' + CURRENCY + ' ' + fmtMoney_(held) + ' recorded';
+        stampMessage_(query, '💸 REFUNDED ' + CURRENCY + ' ' + fmtMoney_(held));
+      }
 
     } else if (data === 'cmd_today') {
       sendDayList_(Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'), 'Today');
@@ -1319,8 +1849,14 @@ function handleCallbackQuery_(query) {
       sendPendingList_();
       answer = 'Pending';
     } else if (data === 'cmd_money') {
-      sendMoneyList_();
-      answer = 'Balances';
+      sendAgingReport_();
+      answer = 'Money owed';
+    } else if (data === 'cmd_cash') {
+      sendCashReport_();
+      answer = 'Cash today';
+    } else if (data === 'cmd_month') {
+      sendMonthReport_();
+      answer = 'This month';
     }
   } catch (err) {
     logError_('handleCallbackQuery', err);
@@ -1343,6 +1879,12 @@ function stampMessage_(query, label) {
   });
 }
 
+/** A readable stamp for the Ledger's "Recorded By" column. */
+function describeUser_(from) {
+  if (!from) return 'owner';
+  return (from.username ? '@' + from.username : (from.first_name || 'user')) + ' (' + from.id + ')';
+}
+
 function handleBotMessage_(message) {
   var text = String(message.text || '').trim().toLowerCase();
   var chatId = message.chat.id;
@@ -1359,7 +1901,10 @@ function handleBotMessage_(message) {
   if (text === '/today') return sendDayList_(today, 'Today');
   if (text === '/tomorrow') return sendDayList_(tomorrow, 'Tomorrow');
   if (text === '/pending') return sendPendingList_();
-  if (text === '/money') return sendMoneyList_();
+  if (text === '/money' || text === '/owed') return sendAgingReport_();
+  if (text === '/cash') return sendCashReport_();
+  if (text === '/month') return sendMonthReport_();
+  if (text.indexOf('/spend') === 0) return handleSpendCommand_(message.text, describeUser_(message.from));
 
   sendTelegram_(chatId,
     '👋 <b>Catering Assistant</b>\n\n' +
@@ -1373,7 +1918,11 @@ function handleBotMessage_(message) {
         ],
         [
           { text: '⏳ Pending Orders', callback_data: 'cmd_pending' },
-          { text: '💰 Unpaid Balances', callback_data: 'cmd_money' }
+          { text: '💰 Money Owed', callback_data: 'cmd_money' }
+        ],
+        [
+          { text: '💵 Cash Today', callback_data: 'cmd_cash' },
+          { text: '📊 This Month', callback_data: 'cmd_month' }
         ]
       ]
     });
@@ -1544,6 +2093,18 @@ function getSetting_(key, fallback) {
 
 var SETTINGS_CACHE = null;
 
+function ledgerSheet_() {
+  var sheet = ss_().getSheetByName(SHEETS.LEDGER);
+  if (!sheet) {
+    sheet = ss_().insertSheet(SHEETS.LEDGER);
+    sheet.appendRow(LEDGER_HEADERS);
+    sheet.getRange(1, 1, 1, LEDGER_HEADERS.length).setFontWeight('bold').setBackground('#bbf7d0');
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(6, 240);
+  }
+  return sheet;
+}
+
 function logSheet_() {
   var sheet = ss_().getSheetByName(SHEETS.LOG);
   if (!sheet) {
@@ -1618,6 +2179,9 @@ function existingOrderIds_(sheet) {
   }
   return taken;
 }
+
+function todayStr_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'); }
+function monthStartStr_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM') + '-01'; }
 
 function nowStr_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm:ss'); }
 

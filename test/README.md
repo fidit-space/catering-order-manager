@@ -26,6 +26,8 @@ why the suite runs on every push.
 | `frontend` | Order payloads, validation, local-date handling, and that a rejected save is reported as an error and kept on the device |
 | `integrity` | The `onEdit` guard that repairs hand-edited cells, and the watchdog that pushes new Log entries to Telegram |
 | `operations` | Status pipeline, chasing unpaid balances, weekly backup, Settings tab |
+| `auth` | Telegram signature verification — forged, tampered, expired and stranger launches |
+| `finance` | The money ledger: instalments, refunds, price-change audit trail, cost/margin, reports reconciling against the ledger |
 
 ## How it works
 

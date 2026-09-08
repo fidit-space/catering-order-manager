@@ -90,13 +90,14 @@ module.exports = function (t) {
     JSON.stringify(chaseMsg.payload.reply_markup).includes('paid_' + old.orderId));
   t.check('does not chase the same order twice', /nothing to chase/.test(checkUnpaidBalances()));
 
-  t.section('/money shows everything owed regardless of chasing');
+  t.section('/owed shows everything outstanding, aged');
   SENT.length = 0;
-  sendMoneyList_();
+  sendAgingReport_();
   const moneyMsg = SENT[0].payload.text;
   t.check('lists both debtors', moneyMsg.includes('Slow Payer') && moneyMsg.includes('Just Delivered'));
-  t.check('totals them', moneyMsg.includes('17,100'), moneyMsg.slice(-90));
-  t.check('excludes the paid order', !moneyMsg.includes('Rizwan'));
+  t.check('totals them', moneyMsg.includes('17,100'), moneyMsg.slice(0, 90));
+  t.check('excludes the settled order', !moneyMsg.includes('Rizwan'));
+  t.check('groups the older debt separately', /More than a month|1–4 weeks|This week/.test(moneyMsg));
 
   t.section('Weekly backup');
   const result = weeklyBackup();

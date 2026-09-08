@@ -23,6 +23,9 @@ Runs as a **Telegram Mini App** on **GitHub Pages**, backed by **Google Sheets**
 | Doing totals in your head | Prices live in the sheet; total and balance calculate as you tap |
 | Customers disputing quantities | One tap sends the order summary to the customer on WhatsApp |
 | Chasing money owed | Delivered orders that still owe are chased automatically, once |
+| Not knowing if an order made money | Dish costs give an estimated margin on every order, automatically |
+| No financial record | Every rupee in or out is an append-only Ledger row you can audit |
+| Cash going missing | `/cash` says what the cash box should hold, so it can be counted |
 | Losing everything with the account | A full CSV backup is emailed every week |
 | Changing the menu | Edit a Google Sheet tab — no code, no deploy |
 | Hosting costs | **Rs. 0** — GitHub Pages + Google's free quotas |
@@ -64,7 +67,7 @@ flowchart TD
 | `backend/google_apps_script.js` | The serverless backend, pasted into Apps Script |
 | `SETUP_INSTRUCTIONS.md` | One-time setup, step by step |
 | `MENU_GUIDE.md` | How the owner changes dishes and prices himself |
-| `test/` | 170 checks, run with `node test/run.js` — no dependencies |
+| `test/` | 227 checks, run with `node test/run.js` — no dependencies |
 | `.github/workflows/tests.yml` | Runs those checks on every push |
 | `CLAUDE_CODE_SPEC.md` | The original build specification |
 | `Catering Order Management Solutions.md` | The research that led to this architecture |
@@ -81,6 +84,10 @@ the quantities are confirmed in writing.
 **Seeing the day** — the **📅 Orders** tab lists Today / Tomorrow / Upcoming / Unpaid with
 the money still to collect. Each order shows its stage and one button for the next step:
 Confirm → Start cooking → Out for delivery → Delivered. Or just send `/today` to the bot.
+
+**Money** — the **💰 Money** tab shows today's takings, what the cash box should physically
+hold, a one-line cost entry, this month's profit and margin, and who owes you grouped by how
+overdue they are. On the bot: `/cash`, `/owed`, `/month`, and `/spend 4500 chicken`.
 
 **Getting paid** — every order carries its balance. Once it is delivered and still unpaid,
 the bot chases it after three days with a WhatsApp button per customer and a *Paid* button
@@ -103,6 +110,7 @@ business is never one lost account away from losing its order history.
 | :--- | :--- |
 | **Menu** | Category, Item, Unit, Rate, Step, Active — *the owner edits this one* |
 | **Settings** | Alert timings, payment-chase delay, backup target — *also owner-editable* |
+| **Ledger** | Append-only record of every payment, refund and cost — *the financial truth* |
 | **Orders** | Every order plus reminder, delivery and payment bookkeeping |
 | **Customers** | Phone-keyed directory built automatically: name, last address, order count |
 | **Log** | Every error, so nothing ever fails invisibly |
@@ -128,7 +136,7 @@ and key can reach nothing. Details in `SETUP_INSTRUCTIONS.md`.
 node test/run.js
 ```
 
-170 checks, no `npm install`, no build step. They run on every push via GitHub
+227 checks, no `npm install`, no build step. They run on every push via GitHub
 Actions. See [`test/README.md`](test/README.md) for what each suite covers and why.
 
 Two safeguards worth knowing about:

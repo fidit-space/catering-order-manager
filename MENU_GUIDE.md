@@ -23,6 +23,27 @@ Install the **Google Sheets** app (Play Store / App Store) and open the
 | **Rate** | Price for **one** unit, in rupees, numbers only | `950` |
 | **Step** | How much one tap of ➕ adds | `5` |
 | **Active** | `YES` to show it, `NO` to hide it | `YES` |
+| **Cost** | What **one** unit costs you to make, in rupees | `550` |
+
+---
+
+## About the Cost column
+
+`Rate` is what the customer pays. `Cost` is what that portion costs **you** — the chicken,
+rice, spices, gas and packaging for one plate.
+
+Fill it in and the app works out your profit on every order automatically, with nothing
+extra to type. Leave it blank and everything still works; you just will not see a profit
+figure for that dish.
+
+You do not need to be exact. A close estimate is enough to tell a good order from a bad one.
+
+**Why it matters:** ingredient prices move. If chicken goes up and your Rate does not, a
+Rs. 950 biryani can quietly start losing money. With Cost filled in, the order screen shows
+the margin and turns it **red below 20%** — so you see it on the day, not at the end of the
+month.
+
+Update Cost whenever market prices shift noticeably. Once a month is usually plenty.
 
 ---
 
@@ -37,7 +58,7 @@ Go to the first empty row and fill in all six columns. Use a Category that alrea
 exists to put it in an existing tab, or type a new word to create a new group.
 
 ```
-Curry | Fish Curry (Ambul Thiyal) | Litres | 2600 | 1 | YES
+Curry | Fish Curry (Ambul Thiyal) | Litres | 2600 | 1 | YES | 1500
 ```
 
 ### Stop offering something

@@ -64,6 +64,55 @@ credited as a passing feature (*"Automatic Weekly Disaster Recovery"*). Table in
 
 ---
 
+## Task 10: Financial ledger, costing and reports
+- **Assignee:** Claude Code
+- **Status:** `[READY_FOR_AUDIT]`
+
+**The problem.** The app tracked *price*, not *money*. Total / Advance / Balance were
+overwritten in place, so there was no record of when cash arrived, how much came each time,
+or how it was paid. Three concrete defects followed:
+
+1. `markOrderPaid_` wrote `Advance = Total`, recording money collected **on delivery** as if
+   it had been paid **upfront**. Every advance-versus-on-delivery figure was wrong after one tap.
+2. Only one payment was representable. Real catering is instalments.
+3. Cancelling an order left the customer's money invisible — status flipped, money columns
+   untouched, and `readUnpaid_` skips cancelled orders. A refund owed vanished from every view.
+
+**The fix.** A new append-only **Ledger** tab is now the source of truth for money. `Received`
+and `Balance Due` on an order are mirrors recomputed from it. Also added:
+
+- Instalment payments, each keeping its own amount, method and timestamp.
+- `cancelOrder_` reports money held and offers a one-tap refund.
+- Price changes write an `Adjustment` row with old → new and the stated reason.
+- A `Cost` column on the Menu tab → estimated food cost and margin per order, with **no extra
+  typing from the kitchen**. Margin under 20% shows red on the order card.
+- `/cash` (takings, costs, profit, and what the cash box should physically hold), `/owed`
+  (aged receivables), `/month` (revenue, costs, profit, margin), `/spend 4500 chicken`.
+- A **💰 Money** screen in the app with the same figures plus one-line cost entry.
+
+**Also fixed:** commit `31feeac` removed the platform guard (correctly — it blocked the real
+webview), but that left `tg` truthy in a plain browser, so the in-page Save button was hidden
+in favour of Telegram's inert MainButton and there was **no way to submit an order outside
+Telegram**. Now gated on `tg.platform !== 'unknown'` instead.
+
+**Tests:** 227 total, 55 new in `test/finance.test.js`. Reports are asserted to reconcile
+against the ledger rather than against themselves.
+
+**For the auditor**
+- 🟠 The Ledger is append-only *by convention*. Google Sheets rows remain hand-editable, so
+  this is a reviewable trail, not cryptographic immutability. Recommend protecting the range
+  (*Data → Protect sheets and ranges*); the weekly emailed backup makes tampering evident by
+  comparison. Stated plainly rather than implying a guarantee that does not exist.
+- 🟠 `Est. Food Cost` uses Menu costs at the time the order is saved. If a price is edited
+  later, historic orders keep the old estimate — correct for accounting, worth knowing.
+- ⚪ Seeded costs in `DEFAULT_MENU` are placeholders at ~58% of rate. Umair should replace
+  them with real figures before reading any margin as truth.
+- ⚪ Existing `Menu` tabs gain `Cost` as an appended column, so nothing breaks; it simply
+  reads blank until filled. Orders sheets gain three columns and a renamed header
+  (`Advance Paid` → `Received`); run `initSheets()` after deploying.
+
+---
+
 ## 🚀 Active Sprint: Security Hardening & Internal Pilot
 
 ### Task 1: Fix IP Protection (Standalone Script Mode)

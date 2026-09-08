@@ -191,6 +191,29 @@ authentication depends on it. For a leaked URL or key, follow
 
 ---
 
+## The money record
+
+Every payment, refund and cost is one row in the **Ledger** tab, appended and never edited.
+An order's `Received` and `Balance Due` are recalculated from it — if the two ever disagree,
+the Ledger is right.
+
+**Do not edit the Ledger by hand.** It is the audit trail; correcting a mistake means adding
+a new entry, not changing an old one. Consider protecting the range: *Data → Protect sheets
+and ranges*.
+
+Money commands on the bot:
+
+| Command | What it shows |
+|---|---|
+| `/cash` | Today's takings by method, costs, profit, and what the cash box should physically hold |
+| `/owed` | Who owes you, grouped by how overdue they are |
+| `/month` | Revenue, costs, profit and margin for the month |
+| `/spend 4500 chicken` | Records a cost — the category is worked out from the words |
+
+`/spend` accepts a trailing `bank` or `card` when it was not cash, e.g. `/spend 800 driver bank`.
+
+---
+
 ## Adjusting how it behaves
 
 The **Settings** tab in the spreadsheet controls the timings, with no code change:
@@ -210,7 +233,8 @@ The **Settings** tab in the spreadsheet controls the timings, with no code chang
 
 | Thing | Location | Who can change it |
 |---|---|---|
-| Dishes, units, prices | **Menu** tab of the spreadsheet | Anyone with the Sheet — see `MENU_GUIDE.md` |
+| Dishes, units, prices, costs | **Menu** tab of the spreadsheet | Anyone with the Sheet — see `MENU_GUIDE.md` |
+| Every rupee in or out | **Ledger** tab — append-only | The app only. Do not edit by hand |
 | Timings and backup target | **Settings** tab | Anyone with the Sheet |
 | Orders | **Orders** tab | The app, or by hand |
 | Customer directory | **Customers** tab | Built automatically from orders |
