@@ -561,19 +561,28 @@ function orderStatus_(orderId) {
 
 /** Records the balance as settled. Used from the app and from Telegram. */
 function markOrderPaid_(orderId) {
-  var sheet = ordersSheet_();
-  var data = sheet.getDataRange().getValues();
-  for (var i = 1; i < data.length; i++) {
-    if (data[i][COL.ID] !== orderId) continue;
-    var total = num_(data[i][COL.TOTAL]);
-    sheet.getRange(i + 1, COL.ADVANCE + 1).setValue(total);
-    sheet.getRange(i + 1, COL.BALANCE + 1).setValue(0);
-    sheet.getRange(i + 1, COL.PAYMENT + 1).setValue('Paid');
-    sheet.getRange(i + 1, COL.PAID_AT + 1).setValue(nowStr_());
-    sheet.getRange(i + 1, COL.UPDATED + 1).setValue(nowStr_());
-    return { status: 'success', orderId: orderId, collected: total - num_(data[i][COL.ADVANCE]) };
+  // Locked for the same reason setOrderStatus_ is: this reads the row, then
+  // writes five cells back. Without the lock a concurrent updateOrder_ can
+  // land in between and have its changes overwritten.
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = ordersSheet_();
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][COL.ID] !== orderId) continue;
+      var total = num_(data[i][COL.TOTAL]);
+      sheet.getRange(i + 1, COL.ADVANCE + 1).setValue(total);
+      sheet.getRange(i + 1, COL.BALANCE + 1).setValue(0);
+      sheet.getRange(i + 1, COL.PAYMENT + 1).setValue('Paid');
+      sheet.getRange(i + 1, COL.PAID_AT + 1).setValue(nowStr_());
+      sheet.getRange(i + 1, COL.UPDATED + 1).setValue(nowStr_());
+      return { status: 'success', orderId: orderId, collected: total - num_(data[i][COL.ADVANCE]) };
+    }
+    throw new Error('Order not found: ' + orderId);
+  } finally {
+    lock.releaseLock();
   }
-  throw new Error('Order not found: ' + orderId);
 }
 
 /** Orders between two yyyy-MM-dd dates (inclusive). Defaults to today .. +30 days. */

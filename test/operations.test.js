@@ -52,6 +52,9 @@ module.exports = function (t) {
   t.check('payment status Paid', SS.getSheetByName('Orders').rows[1][COL.PAYMENT] === 'Paid');
   t.check('Paid At stamped', !!SS.getSheetByName('Orders').rows[1][COL.PAID_AT]);
 
+  t.check('marking paid twice is harmless', markOrderPaid_(o1.orderId).collected === 0,
+    String(markOrderPaid_(o1.orderId).collected));
+
   t.section('Chasing unpaid balances');
   // An order delivered 5 days ago, still owing.
   const old = saveOrder_({
