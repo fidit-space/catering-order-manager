@@ -1,8 +1,12 @@
 name: Tests
 
-# The reminder engine once failed in a way that produced no error at all.
-# Running these checks on every push is the only thing that catches that class
-# of defect before it reaches a working kitchen.
+# The reminder engine once failed in a way that produced no error at all, and
+# a production API key was committed and published. Both are caught here, so
+# neither can reach the kitchen unnoticed again.
+#
+# NOTE: a red build means DO NOT PUSH. On 2026-09-08 two commits went in on a
+# red build, and the failing step was the secret scan below — it had correctly
+# caught the published API key.
 
 on:
   push:
@@ -15,11 +19,11 @@ jobs:
     name: Checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
 
       # No install step: the project ships no dependencies and no build,
       # so there is nothing to restore.
@@ -34,14 +38,44 @@ jobs:
           sed -n '/^<script>$/,/^<\/script>$/p' index.html | sed '1d;$d' > /tmp/app.js
           node --check /tmp/app.js
 
-      - name: Fail if a real secret was committed
+      - name: Credential scan
         run: |
-          if grep -nE '[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}' -r . --exclude-dir=.git; then
-            echo "::error::A Telegram bot token appears to be committed. Secrets belong in Script Properties."
+          fail=0
+
+          # HARD FAIL. The bot token is the one genuine secret in this system:
+          # it is the HMAC key Telegram signs initData with, so leaking it
+          # defeats the authentication entirely. It belongs in Script
+          # Properties and nowhere else.
+          if grep -rEn '[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}' . --exclude-dir=.git --exclude-dir=.github; then
+            echo "::error::A Telegram bot token is committed. Revoke it via @BotFather now, then move it to Script Properties."
+            fail=1
+          fi
+
+          # WARN ONLY. index.html is served publicly by GitHub Pages, so its
+          # config cannot be secret and committing it is expected. These are
+          # spam filters, not credentials — requireTelegramAuth_() is what
+          # actually protects the data. Flagged so a rotation is a deliberate,
+          # visible act rather than a silent one.
+          if grep -En 'script\.google\.com/macros/s/AKfy' index.html >/dev/null; then
+            echo "::warning::A live deployment URL is published in index.html. Expected for a static page; make sure the deployment enforces Telegram auth."
+          fi
+          if grep -En '^var API_KEY = "[^"]+"' index.html | grep -qv 'PASTE_'; then
+            echo "::warning::A real API_KEY is published in index.html. Public by design; it must never be the only thing guarding a write."
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Credential scan failed. Do not push past this — rotate whatever was exposed."
             exit 1
           fi
-          if grep -n 'script.google.com/macros/s/AKfy' index.html; then
-            echo "::error::A real deployment URL is committed in index.html."
-            exit 1
-          fi
-          echo "No secrets found."
+          echo "No secret credentials in the tree."
+
+      # The exposure on 2026-09-08 happened because writes were guarded only by
+      # a key published in the page. This asserts the real gate is still wired
+      # in, so nobody can quietly remove it.
+      - name: Assert writes require a verified Telegram launch
+        run: |
+          grep -q 'requireTelegramAuth_(body.initData' backend/google_apps_script.js \
+            || { echo "::error::doPost no longer verifies Telegram initData."; exit 1; }
+          grep -q 'requireTelegramAuth_(p.initData' backend/google_apps_script.js \
+            || { echo "::error::doGet no longer verifies Telegram initData."; exit 1; }
+          echo "Telegram identity verification is wired into both entry points."

@@ -163,6 +163,34 @@ Then do a real end-to-end check on the phone:
 
 ---
 
+## Security model — read this before deploying
+
+`index.html` is served publicly by GitHub Pages, so **anything inside it is public**,
+including `API_KEY` and the Web App URL. A static page cannot keep a secret.
+
+| Value | Secret? | Where it lives |
+|---|---|---|
+| **Bot token** | 🔴 **Yes — the only real secret** | Script Properties, nowhere else |
+| Webhook secret | 🔴 Yes | Script Properties |
+| `API_KEY` | ⚪ No — public by design | `index.html`; a spam filter only |
+| Web App URL | ⚪ No — public by design | `index.html` |
+
+Access control is **Telegram's signature**, not the key. Every request must carry
+`initData`, which Telegram signs with your bot token; the backend verifies it and checks
+the user id against the owner. A stranger with the URL and key can reach nothing.
+
+Two optional Script Properties:
+
+- `EXTRA_TELEGRAM_USER_IDS` — comma-separated ids allowed besides the owner.
+- `ALLOW_BROWSER_ACCESS` — set to `YES` to permit **read-only** use outside Telegram while
+  debugging. Writes stay blocked regardless. Leave it unset in normal operation.
+
+If the bot token is ever exposed, revoke it through `@BotFather` immediately — the whole
+authentication depends on it. For a leaked URL or key, follow
+[`.team/ROTATION_RUNBOOK.md`](.team/ROTATION_RUNBOOK.md).
+
+---
+
 ## Adjusting how it behaves
 
 The **Settings** tab in the spreadsheet controls the timings, with no code change:
@@ -174,6 +202,7 @@ The **Settings** tab in the spreadsheet controls the timings, with no code chang
 | `payment_chase_days` | 3 | Days after delivery before an unpaid balance is chased. **0 turns chasing off** |
 | `backup_email` | *(blank)* | Where backups are sent. Blank = the account owning the sheet |
 | `backup_keep_weeks` | 8 | How many weekly backups to keep before deleting the oldest |
+| `auth_max_age_hours` | 24 | How long a Telegram launch stays valid before the app must be reopened |
 
 ---
 

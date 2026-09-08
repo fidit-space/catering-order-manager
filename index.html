@@ -466,6 +466,17 @@ function normalizePhone(raw) {
   return digits;
 }
 
+/** Turns a server rejection into something worth reading on a phone. */
+function friendlyError(message) {
+  var m = String(message || 'Server error');
+  if (/sign-in data|expired|private to the business owner/i.test(m)) {
+    return tg
+      ? m + '\n\nClose the app and reopen it from the 📋 New Order button in your bot.'
+      : 'This app can only be used from inside Telegram. Open your bot and tap 📋 New Order.';
+  }
+  return m;
+}
+
 function isConfigured() {
   return APPS_SCRIPT_WEBAPP_URL.indexOf('https://script.google.com/') === 0 &&
          API_KEY.indexOf('PASTE_') !== 0;
@@ -474,8 +485,16 @@ function isConfigured() {
 /* ============================================================
    Network — real errors, never a silent success
    ============================================================ */
+/** Telegram's signed proof of who launched the app. The server verifies it
+ *  against the bot token, which never leaves Google. This — not API_KEY — is
+ *  what actually protects the data; API_KEY is public in this file. */
+function initData() {
+  return (tg && tg.initData) || '';
+}
+
 function apiGet(action, params) {
   var qs = ['action=' + encodeURIComponent(action), 'key=' + encodeURIComponent(API_KEY)];
+  if (initData()) qs.push('initData=' + encodeURIComponent(initData()));
   Object.keys(params || {}).forEach(function (k) {
     if (params[k] !== undefined && params[k] !== null && params[k] !== '') {
       qs.push(k + '=' + encodeURIComponent(params[k]));
@@ -484,7 +503,7 @@ function apiGet(action, params) {
   return fetch(APPS_SCRIPT_WEBAPP_URL + '?' + qs.join('&'), { method: 'GET', redirect: 'follow' })
     .then(function (r) { return r.json(); })
     .then(function (data) {
-      if (data.status !== 'ok' && data.status !== 'success') throw new Error(data.message || 'Server error');
+      if (data.status !== 'ok' && data.status !== 'success') throw new Error(friendlyError(data.message));
       return data;
     });
 }
@@ -497,6 +516,7 @@ function apiGet(action, params) {
  */
 function apiPost(payload) {
   payload.key = API_KEY;
+  payload.initData = initData();
   return fetch(APPS_SCRIPT_WEBAPP_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -509,7 +529,7 @@ function apiPost(payload) {
     })
     .then(function (data) {
       if (data.status !== 'success' && data.status !== 'ok') {
-        throw new Error(data.message || 'Server rejected the order');
+        throw new Error(friendlyError(data.message));
       }
       return data;
     });

@@ -64,7 +64,7 @@ flowchart TD
 | `backend/google_apps_script.js` | The serverless backend, pasted into Apps Script |
 | `SETUP_INSTRUCTIONS.md` | One-time setup, step by step |
 | `MENU_GUIDE.md` | How the owner changes dishes and prices himself |
-| `test/` | 141 checks, run with `node test/run.js` — no dependencies |
+| `test/` | 170 checks, run with `node test/run.js` — no dependencies |
 | `.github/workflows/tests.yml` | Runs those checks on every push |
 | `CLAUDE_CODE_SPEC.md` | The original build specification |
 | `Catering Order Management Solutions.md` | The research that led to this architecture |
@@ -112,13 +112,23 @@ in this repository.
 
 ---
 
+## Security in one paragraph
+
+`index.html` is public — GitHub Pages serves it to anyone — so `API_KEY` and the Web App
+URL inside it are **not secrets** and are not what protects the data. Every request must
+carry Telegram's signed `initData`, which the backend verifies by HMAC against the bot
+token; the token never leaves Google Apps Script Script Properties. Someone with the URL
+and key can reach nothing. Details in `SETUP_INSTRUCTIONS.md`.
+
+---
+
 ## Working on this code
 
 ```bash
 node test/run.js
 ```
 
-141 checks, no `npm install`, no build step. They run on every push via GitHub
+170 checks, no `npm install`, no build step. They run on every push via GitHub
 Actions. See [`test/README.md`](test/README.md) for what each suite covers and why.
 
 Two safeguards worth knowing about:

@@ -39,7 +39,24 @@ function tzOffsetMinutes(date, tz) {
   return Math.round((asUTC - date.getTime()) / 60000);
 }
 
-global.Utilities = {
+const crypto = require('crypto');
+
+  global.Utilities = {
+    /** Real HMAC-SHA256, so the initData check is tested against the actual
+     *  algorithm rather than a stand-in. Apps Script returns SIGNED bytes. */
+    computeHmacSha256Signature(value, key) {
+      const v = Buffer.isBuffer(value) ? value
+        : Array.isArray(value) ? Buffer.from(value.map(b => b & 0xff))
+        : Buffer.from(String(value), 'utf8');
+      const k = Buffer.isBuffer(key) ? key
+        : Array.isArray(key) ? Buffer.from(key.map(b => b & 0xff))
+        : Buffer.from(String(key), 'utf8');
+      const digest = crypto.createHmac('sha256', k).update(v).digest();
+      return Array.from(digest).map(b => (b > 127 ? b - 256 : b));
+    },
+    newBlob(text) {
+      return { getBytes: () => Array.from(Buffer.from(String(text), 'utf8')).map(b => (b > 127 ? b - 256 : b)) };
+    },
   formatDate(date, tz, pattern) {
     const p = partsIn(date, tz);
     const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

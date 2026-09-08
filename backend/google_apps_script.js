@@ -113,6 +113,13 @@ function setupProperties() {
     API_KEY: '',                  // any random word, e.g. mankada2026 (also goes in index.html)
     WEBHOOK_SECRET: '',           // any other random word, e.g. wh-7f3k9
     SPREADSHEET_ID: ''            // Optional: Google Sheet ID from URL if running as Standalone Script
+    //
+    // NOTE ON API_KEY: it is published inside index.html on GitHub Pages, so
+    // treat it as public. It filters drive-by traffic; it does NOT authenticate
+    // anyone. Real access control is Telegram's signature over initData,
+    // checked by requireTelegramAuth_(). Two optional properties:
+    //   EXTRA_TELEGRAM_USER_IDS  comma-separated ids allowed besides the owner
+    //   ALLOW_BROWSER_ACCESS     'YES' permits READ-ONLY use outside Telegram
   };
 
   var required = ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_OWNER_CHAT_ID', 'API_KEY', 'WEBHOOK_SECRET'];
@@ -212,6 +219,124 @@ function runSelfTest() {
   var summary = results.join('\n');
   Logger.log(summary);
   return summary;
+}
+
+// ==================== TELEGRAM IDENTITY VERIFICATION ====================
+
+/*
+ * WHY THIS EXISTS
+ *
+ * index.html is served from GitHub Pages, so anything inside it — including
+ * API_KEY — is readable by anyone who opens the page. A static page cannot
+ * keep a secret. The key is therefore a spam filter, never authentication.
+ *
+ * Telegram signs every Mini App launch with initData, an HMAC over the
+ * launch parameters using the bot token as the key. The bot token never
+ * leaves Script Properties, so only a genuine launch of THIS bot can produce
+ * a valid signature — and a leaked API key gets an attacker nothing.
+ *
+ * Reference: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+ */
+
+/** Actions that change data. These always require a verified Telegram launch. */
+var WRITE_ACTIONS = {
+  newOrder: true, updateOrder: true, cancelOrder: true, markDelivered: true,
+  advanceStatus: true, setStatus: true, markPaid: true
+};
+
+/**
+ * Verifies Telegram's signature over initData.
+ * @return {{ok: boolean, user: Object, reason: string}}
+ */
+function validateInitData_(initData) {
+  if (!initData) return { ok: false, reason: 'No Telegram sign-in data was sent.' };
+
+  var pairs = String(initData).split('&');
+  var hash = '';
+  var fields = [];
+  var data = {};
+
+  for (var i = 0; i < pairs.length; i++) {
+    var eq = pairs[i].indexOf('=');
+    if (eq === -1) continue;
+    var key = decodeURIComponent(pairs[i].substring(0, eq));
+    var value = decodeURIComponent(pairs[i].substring(eq + 1));
+    if (key === 'hash') { hash = value; continue; }
+    if (key === 'signature') continue; // Ed25519 field, not part of the HMAC
+    data[key] = value;
+    fields.push(key + '=' + value);
+  }
+
+  if (!hash) return { ok: false, reason: 'Sign-in data is missing its signature.' };
+
+  // Telegram requires the remaining fields sorted by key, joined with newlines.
+  fields.sort();
+  var checkString = fields.join('\n');
+
+  // secret = HMAC(key: "WebAppData", message: bot token)
+  var secret = Utilities.computeHmacSha256Signature(cfg_('TELEGRAM_BOT_TOKEN'), 'WebAppData');
+  var computed = Utilities.computeHmacSha256Signature(
+    Utilities.newBlob(checkString).getBytes(), secret);
+
+  if (toHex_(computed) !== String(hash).toLowerCase()) {
+    return { ok: false, reason: 'Sign-in data failed verification.' };
+  }
+
+  // A valid signature is forever, so replayed launches are bounded by age.
+  var maxAge = Number(getSetting_('auth_max_age_hours', 24)) || 24;
+  var authDate = Number(data.auth_date || 0);
+  if (authDate && (Date.now() / 1000 - authDate) > maxAge * 3600) {
+    return { ok: false, reason: 'This session has expired. Please reopen the app from Telegram.' };
+  }
+
+  var user = null;
+  try { user = data.user ? JSON.parse(data.user) : null; } catch (e) { user = null; }
+  if (!user || !user.id) return { ok: false, reason: 'Sign-in data carried no user.' };
+
+  return { ok: true, user: user, reason: '' };
+}
+
+/** Telegram ids permitted to use this deployment: the owner, plus any extras. */
+function allowedUserIds_() {
+  var ids = {};
+  ids[String(ownerChat_())] = true;
+  var extra = props_().getProperty('EXTRA_TELEGRAM_USER_IDS') || '';
+  extra.split(',').forEach(function (id) {
+    var trimmed = String(id).trim();
+    if (trimmed) ids[trimmed] = true;
+  });
+  return ids;
+}
+
+/**
+ * The gate every request passes through.
+ * Throws with a message safe to show the user.
+ */
+function requireTelegramAuth_(initData, action) {
+  // Escape hatch for setup and debugging from a desktop browser. Off unless
+  // explicitly switched on, and it never applies to write actions.
+  if (props_().getProperty('ALLOW_BROWSER_ACCESS') === 'YES' && !WRITE_ACTIONS[action]) return null;
+
+  var result = validateInitData_(initData);
+  if (!result.ok) throw new Error(result.reason);
+
+  if (!allowedUserIds_()[String(result.user.id)]) {
+    logError_('requireTelegramAuth_', new Error('Rejected Telegram user ' + result.user.id +
+      ' (' + (result.user.username || 'no username') + ') attempting "' + action + '"'));
+    throw new Error('This app is private to the business owner.');
+  }
+  return result.user;
+}
+
+/** Hex-encodes the signed byte array Apps Script returns. */
+function toHex_(bytes) {
+  var out = '';
+  for (var i = 0; i < bytes.length; i++) {
+    // Apps Script bytes are signed (-128..127).
+    var b = (bytes[i] < 0 ? bytes[i] + 256 : bytes[i]).toString(16);
+    out += b.length === 1 ? '0' + b : b;
+  }
+  return out;
 }
 
 // ==================== SHEET INTEGRITY GUARD ====================
@@ -350,7 +475,10 @@ function doGet(e) {
     var p = (e && e.parameter) || {};
     var action = p.action || 'health';
 
-    if (action !== 'health') requireKey_(p.key);
+    if (action !== 'health') {
+      requireKey_(p.key);              // cheap spam filter, NOT authentication
+      requireTelegramAuth_(p.initData, action);   // the real gate
+    }
 
     switch (action) {
       case 'health':   return json_(health_(p.key));
@@ -410,9 +538,11 @@ function doPost(e) {
     }
 
     var body = JSON.parse(e.postData.contents);
-    requireKey_(body.key);
+    requireKey_(body.key);             // cheap spam filter, NOT authentication
 
     var action = body.action || (body.order ? 'newOrder' : '');
+    var actor = requireTelegramAuth_(body.initData, action);   // the real gate
+    if (actor) body.actorId = actor.id;
     switch (action) {
       case 'newOrder':    return json_(saveOrder_(body.order));
       case 'updateOrder': return json_(updateOrder_(body.orderId, body.order));

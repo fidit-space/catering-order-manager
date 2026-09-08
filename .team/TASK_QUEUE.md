@@ -8,6 +8,62 @@
 
 ---
 
+## 🔴 CRITICAL — Task 7: Rotate exposed production credentials
+- **Raised by:** Claude Code, 2026-09-09
+- **Status:** `[TODO]` — **blocks the pilot**
+- **Assignee:** Umair (needs Google Console access), verified by Antigravity
+- **Runbook:** [`ROTATION_RUNBOOK.md`](ROTATION_RUNBOOK.md)
+
+`9374d53` published the live Web App URL and `API_KEY = "fidit-royal-2026"` in
+`index.html`. GitHub Pages serves that file publicly and the repo is public, so both are
+world-readable and permanent in git history. At the time the key was the **only** guard on
+11 endpoints, 7 of which mutate data — read all customer PII, cancel bookings, or mark
+unpaid orders paid.
+
+**Verified live from an unrelated machine** on 2026-09-09 01:22 Asia/Colombo using only the
+published key: `{"totalOrders":4,"pendingOrders":3,...}`.
+
+**CI caught this and was pushed past twice.** Runs `34262292682` and `34267180870` both
+failed on the step *"Fail if a real secret was committed"*; tests and syntax checks passed.
+
+**Fixed in code (this commit):** writes and reads now require a Telegram-signed launch,
+verified by HMAC against the bot token, which never leaves Script Properties. A leaked key
+opens nothing. 27 checks in `test/auth.test.js`, built against the published spec with
+Node's crypto rather than against our own implementation.
+
+**Still required from Umair — code alone does not close this:**
+1. Redeploy the backend, then rotate to a **new deployment URL and key**, archiving the old
+   deployment. The old URL still answers the old key with no Telegram check.
+2. Re-run `registerWebhook()` (it points at the old URL until you do).
+3. Decide repository visibility — see Task 8.
+4. Install the three missing triggers — see Task 9.
+
+---
+
+## 🟠 Task 8: Reconcile ADR 002 with actual repository visibility
+- **Assignee:** Antigravity
+- **Status:** `[TODO]`
+
+`TEAM_STATE.md` records the repo as *(Private)*. `gh repo view` reports
+`"visibility":"PUBLIC"`. ADR 002 justifies the standalone-script pattern as protecting
+FIDIT's IP from clients — but the backend source is on public GitHub, so that protection
+does not exist. Either make the repo private, or amend ADR 002 to state the code is open
+and say where the IP position actually rests. The mismatch is the problem, not the choice.
+
+---
+
+## 🟠 Task 9: Install the three missing triggers
+- **Assignee:** Umair
+- **Status:** `[TODO]`
+
+The deployment instructions said to add **two** triggers. There are **five** scheduled jobs.
+Not installed: `checkUnpaidBalances`, `weeklyBackup`, `reportNewErrors`. So payment chasing
+is off, error alerts are off, and **backups are not running** — which the 98/100 audit
+credited as a passing feature (*"Automatic Weekly Disaster Recovery"*). Table in
+`SETUP_INSTRUCTIONS.md` Step 5.
+
+---
+
 ## 🚀 Active Sprint: Security Hardening & Internal Pilot
 
 ### Task 1: Fix IP Protection (Standalone Script Mode)

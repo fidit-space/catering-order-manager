@@ -2,7 +2,7 @@
 
 > **Project:** Mobile Catering Order Management System (Telegram Mini App + Google Apps Script + Sheets)  
 > **Client:** Client #1 (Pilot: Friend's Catering Business) → FIDIT White-label SaaS  
-> **Repository:** `fidit-space/catering-order-manager` (Private)  
+> **Repository:** `fidit-space/catering-order-manager` — ⚠️ **PUBLIC** (verified 2026-09-09; see TASK_QUEUE Task 8)  
 > **Last Synchronized:** 2026-09-08  
 
 ---
@@ -60,15 +60,23 @@ sequenceDiagram
 
 ## 🔑 Security & IP Policy (Strictly Enforced)
 
-1. **No Credentials in Git:** Bot tokens, Chat IDs, and API keys reside exclusively in Google Apps Script **Script Properties**.
-2. **Standalone Backend:** The Apps Script must NEVER be container-bound to the client's Google Sheet. It connects via `SpreadsheetApp.openById()` so the client can never view the backend code under `Extensions > Apps Script`.
-3. **Concurrency Locks:** Any write to the Sheet must acquire `LockService.getScriptLock()` with a 20s timeout.
+1. **The bot token is the only real secret.** It is the HMAC key Telegram signs `initData`
+   with, so leaking it defeats authentication entirely. Script Properties only — never in a
+   file, a commit, or a chat message. CI fails hard on it.
+2. **`API_KEY` and the Web App URL are public by design.** They ship inside `index.html`,
+   which GitHub Pages serves to anyone. They are spam filters, never authentication.
+   Treat any claim that they are "secret" as a defect in the claim.
+3. **Real access control is `requireTelegramAuth_()`** — every read and write requires a
+   Telegram-signed launch from an allowed user id. Verified by HMAC against the bot token.
+   CI asserts this gate is still wired into both `doGet` and `doPost`.
+4. **Standalone Backend:** The Apps Script must NEVER be container-bound to the client's Google Sheet. It connects via `SpreadsheetApp.openById()` so the client can never view the backend code under `Extensions > Apps Script`.
+5. **Concurrency Locks:** Any write to the Sheet must acquire `LockService.getScriptLock()` with a 20s timeout.
    **Exception, by design:** `upsertCustomer_`, `logError_` and `pruneBackups_` are only ever called
    from inside already-locked functions. Apps Script script locks are **not reentrant**, so adding a
    lock to these would deadlock. They carry comments saying so — do not "fix" them. If you call one
    from a new place, take the lock at that call site.
    `onEdit` uses a short `tryLock` instead of `waitLock`, because it fires while a person is typing
    and must never block their edit.
-4. **Secrets never in chat:** bot tokens are pasted only into Script Properties — not into files,
+6. **Secrets never in chat:** bot tokens are pasted only into Script Properties — not into files,
    commit messages, or messages to either agent. Bot **ids** and usernames are public and fine to record.
    CI fails the build if a token-shaped string is ever committed.

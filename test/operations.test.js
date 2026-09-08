@@ -4,9 +4,10 @@
  */
 
 const stub = require('./helpers/apps-script-stub.js');
+const telegram = require('./helpers/telegram.js');
 
 module.exports = function (t) {
-  const { SENT, SS, MAILS, DRIVE } = stub.install();
+  const { SENT, SS, MAILS, DRIVE, PROPS } = stub.install();
   eval(stub.backendSource());
 
   initSheets();
@@ -130,7 +131,11 @@ module.exports = function (t) {
   t.section('New API routes');
   t.check('unpaid route returns outstanding orders', readUnpaid_().length === 2, String(readUnpaid_().length));
   t.check('sorted biggest debt first', readUnpaid_()[0].balanceDue >= readUnpaid_()[1].balanceDue);
-  const menuRes = JSON.parse(doGet({ parameter: { action: 'menu', key: 'testkey' } }).getContent());
+  // Routes now require a signed Telegram launch, not just the (public) key.
+  const owner = telegram.launchAs(PROPS.TELEGRAM_BOT_TOKEN, PROPS.TELEGRAM_OWNER_CHAT_ID);
+  const menuRes = JSON.parse(doGet({ parameter: { action: 'menu', key: 'testkey', initData: owner } }).getContent());
   t.check('menu route publishes the status flow', menuRes.statusFlow.length === 4, JSON.stringify(menuRes.statusFlow));
+  const unauthed = JSON.parse(doGet({ parameter: { action: 'menu', key: 'testkey' } }).getContent());
+  t.check('and refuses an unsigned request', unauthed.status === 'error', JSON.stringify(unauthed).slice(0, 80));
 
 };
