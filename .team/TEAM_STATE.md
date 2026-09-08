@@ -2,8 +2,14 @@
 
 > **Project:** Mobile Catering Order Management System (Telegram Mini App + Google Apps Script + Sheets)  
 > **Client:** Client #1 (Pilot: Friend's Catering Business) → FIDIT White-label SaaS  
-> **Repository:** `fidit-space/catering-order-manager` — ⚠️ **PUBLIC** (verified 2026-09-09; see TASK_QUEUE Task 8)  
-> **Last Synchronized:** 2026-09-08  
+> **Repository:** `fidit-space/catering-order-manager`  
+> **Current Status (Overnight):** ⏸️ **SAFELY OFFLINE & PAUSED FOR REST**  
+> - Telegram Webhook: **DELETED / INACTIVE** (zero incoming traffic accepted)  
+> - Telegram Menu Button: **RESET TO DEFAULT** (cannot open Mini App)  
+> - Frontend on GitHub Pages: Set to `OFFLINE_MAINTENANCE`  
+> - Test Suite: **170/170 CHECKS PASSED (100% GREEN)**  
+> - Next Action for Tomorrow: Resume Step 1 of [ROTATION_RUNBOOK.md](ROTATION_RUNBOOK.md) (Deploy new Web App URL, archive old deployment, set triggers).  
+> **Last Synchronized:** 2026-09-09 03:20 Asia/Colombo  
 
 ---
 
