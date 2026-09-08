@@ -26,6 +26,46 @@
 
 ---
 
+## Audit 3: Pre-Launch Defect Audit & Remediation (2026-09-08)
+- **Auditor / Implementer:** Claude Code
+- **Scope:** Full audit of `c808775`, remediation, operations features, test harness, CI.
+- **Verdict:** the app looked finished but was not safe to launch — its three headline features
+  each failed **silently**.
+
+**Critical (6)** — all fixed, each now covered by a regression check:
+1. `mode:'no-cors'` made every response opaque, so a save reported success on a 500, a wrong URL,
+   or the unedited placeholder. An order could vanish while the screen said "Order Saved!".
+2. Sheets coerced `"2026-09-09"` into a Date, so reading it back yielded `NaN` and **every**
+   reminder was skipped. Columns are now plain text, plus a parser accepting both forms.
+3. `registerWebhook()` was specified but never written, leaving `handleCallbackQuery` unreachable —
+   "Mark as Delivered" could never have worked.
+4. Minute-resolution order ids collided; ids are now checked against those already issued.
+5. `parse_mode: "Markdown"` with `muteHttpExceptions` meant a customer named `Mohamed_Rizwan`
+   silently dropped the order alert. Now HTML with escaping, response codes checked, `Log` tab.
+6. Endpoint open to anyone with the URL; now key-checked, secrets in Script Properties.
+
+**High (9)** — the app was write-only (no way to see, edit or cancel an order); the menu was
+hardcoded where the laptop-less owner could not reach it; no prices; the `Customers` sheet was
+written but never read; `toISOString()` rolled "tomorrow" back to today every evening after 18:30;
+free-text phones produced dead `wa.me` links; and four orders tomorrow meant four alerts with no totals.
+
+**Durability work**
+- `onEdit` repairs Delivery Date / Time / Phone on hand-edit. Finding #2 was otherwise only fixed
+  for as long as nobody touched a sheet the owner is explicitly told to edit.
+- `reportNewErrors` pushes new `Log` rows to Telegram — a log nobody reads is not a fix for silence.
+- `test/` (142 checks) + CI on every push. Finding #2 produced no error at all; a failing test is
+  the only defence against that class.
+
+### ADR 003: Test tooling is exempt from ADR 001
+- **Status:** proposed by Claude Code, **awaiting Antigravity's ruling**.
+- **Decision sought:** ADR 001 bans npm and build pipelines. The suite adds **zero packages** and
+  ships nothing to the client, but running it requires Node.
+- **Rationale:** ADR 001's stated purpose is protecting a non-technical owner from maintenance
+  friction. Tests are never run by him, never deployed, and never touch the artefacts he uses.
+  Reject this and the harness comes out — say so and I will remove it.
+
+---
+
 ## Architecture Decision Records (ADRs)
 
 ### ADR 001: Pure Vanilla Stack (No npm, No Node)

@@ -240,10 +240,25 @@ function onEdit(e) {
     var lastRow = firstRow + e.range.getNumRows() - 1;
     var lastCol = firstCol + e.range.getNumColumns() - 1;
 
-    for (var row = Math.max(firstRow, 2); row <= lastRow; row++) {
-      for (var col = firstCol; col <= lastCol; col++) {
-        repairOrderCell_(sheet, row, col);
+    // tryLock rather than waitLock: this runs while a person is typing, so
+    // blocking their edit for 20 seconds would be worse than skipping. If a
+    // reminder job holds the lock, the bad value survives until the next edit
+    // or repairAllOrderRows() — and the daily jobs log it as unreadable in the
+    // meantime, which reportNewErrors pushes to Telegram.
+    var lock = LockService.getScriptLock();
+    if (!lock.tryLock(5000)) {
+      logError_('onEdit', new Error('Sheet busy; skipped repairing row ' + firstRow + '. Run repairAllOrderRows() if a reminder is missed.'));
+      return;
+    }
+
+    try {
+      for (var row = Math.max(firstRow, 2); row <= lastRow; row++) {
+        for (var col = firstCol; col <= lastCol; col++) {
+          repairOrderCell_(sheet, row, col);
+        }
       }
+    } finally {
+      lock.releaseLock();
     }
   } catch (err) {
     logError_('onEdit', err);
@@ -284,16 +299,22 @@ function repairOrderCell_(sheet, row, col) {
  * was edited before this guard existed, or after pasting rows in bulk.
  */
 function repairAllOrderRows() {
-  var sheet = ordersSheet_();
-  var lastRow = sheet.getDataRange().getValues().length;
-  var fixed = 0;
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = ordersSheet_();
+    var lastRow = sheet.getDataRange().getValues().length;
+    var fixed = 0;
 
-  for (var row = 2; row <= lastRow; row++) {
-    [COL.DATE + 1, COL.TIME + 1, COL.PHONE + 1].forEach(function (col) {
-      if (repairOrderCell_(sheet, row, col)) fixed++;
-    });
+    for (var row = 2; row <= lastRow; row++) {
+      [COL.DATE + 1, COL.TIME + 1, COL.PHONE + 1].forEach(function (col) {
+        if (repairOrderCell_(sheet, row, col)) fixed++;
+      });
+    }
+    return 'Repaired ' + fixed + ' cell(s) across ' + Math.max(0, lastRow - 1) + ' order(s).';
+  } finally {
+    lock.releaseLock();
   }
-  return 'Repaired ' + fixed + ' cell(s) across ' + Math.max(0, lastRow - 1) + ' order(s).';
 }
 
 /**
@@ -643,6 +664,12 @@ function rowToOrder_(r) {
 
 // ==================== CUSTOMERS ====================
 
+/**
+ * DELIBERATELY UNLOCKED. Only ever called from saveOrder_, which already holds
+ * the script lock. Apps Script script locks are not reentrant, so acquiring one
+ * here would deadlock. If you ever call this from anywhere else, take the lock
+ * at that call site instead.
+ */
 function upsertCustomer_(name, phone, address) {
   var sheet = customersSheet_();
   var key = normalizePhone_(phone);
@@ -1011,7 +1038,10 @@ function backupFolder_() {
   return found.hasNext() ? found.next() : DriveApp.createFolder(name);
 }
 
-/** Keeps the folder from growing without limit. */
+/**
+ * Keeps the folder from growing without limit.
+ * DELIBERATELY UNLOCKED — only called from weeklyBackup, which holds the lock.
+ */
 function pruneBackups_(folder) {
   var keepWeeks = Number(getSetting_('backup_keep_weeks', 8)) || 8;
   var byTab = {};
@@ -1378,6 +1408,12 @@ function logSheet_() {
   return sheet;
 }
 
+/**
+ * DELIBERATELY UNLOCKED, for the same non-reentrancy reason as upsertCustomer_:
+ * this is called from inside locked functions. It is append-only, so concurrent
+ * writes cost at most row ordering, never data. Logging must never be the thing
+ * that breaks a request.
+ */
 function logError_(where, err) {
   Logger.log(where + ': ' + err);
   try {

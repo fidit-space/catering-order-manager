@@ -46,8 +46,15 @@ sequenceDiagram
 
 1. **Frontend:** `index.html` — Vanilla JS + CSS, Telegram WebApp SDK, runs on GitHub Pages (`$0/month`).
 2. **Backend:** `backend/google_apps_script.js` — Standalone Google Apps Script on FIDIT's Drive, connects to client Sheet via `SPREADSHEET_ID`.
-3. **Database:** Google Sheets (`Menu`, `Orders`, `Customers`, `Log` tabs).
-4. **Notifications:** Telegram Bot API (instant alerts with Call/WhatsApp buttons + 15m/daily cron triggers).
+3. **Database:** Google Sheets (`Menu`, `Orders`, `Customers`, `Settings`, `Log` tabs).
+   `Menu` and `Settings` are owner-editable from the Sheets phone app — dishes, prices, step sizes,
+   alert timings and the backup target — so a price change never needs a deploy.
+4. **Tests:** `test/` — 142 checks, `node test/run.js`, no packages, CI on every push.
+   Ships nothing to the client; see the ADR 001 question raised in TASK_QUEUE Task 5.
+5. **Notifications:** Telegram Bot API — `@royal_catering_orders_bot` (id `8856703286`).
+   Instant order alerts with Call / WhatsApp / Map / pipeline buttons, plus five triggers:
+   dispatch alerts (15 min), evening prep digest, payment chasing, weekly backup, and `onEdit`
+   sheet repair (no installation needed).
 
 ---
 
@@ -56,3 +63,12 @@ sequenceDiagram
 1. **No Credentials in Git:** Bot tokens, Chat IDs, and API keys reside exclusively in Google Apps Script **Script Properties**.
 2. **Standalone Backend:** The Apps Script must NEVER be container-bound to the client's Google Sheet. It connects via `SpreadsheetApp.openById()` so the client can never view the backend code under `Extensions > Apps Script`.
 3. **Concurrency Locks:** Any write to the Sheet must acquire `LockService.getScriptLock()` with a 20s timeout.
+   **Exception, by design:** `upsertCustomer_`, `logError_` and `pruneBackups_` are only ever called
+   from inside already-locked functions. Apps Script script locks are **not reentrant**, so adding a
+   lock to these would deadlock. They carry comments saying so — do not "fix" them. If you call one
+   from a new place, take the lock at that call site.
+   `onEdit` uses a short `tryLock` instead of `waitLock`, because it fires while a person is typing
+   and must never block their edit.
+4. **Secrets never in chat:** bot tokens are pasted only into Script Properties — not into files,
+   commit messages, or messages to either agent. Bot **ids** and usernames are public and fine to record.
+   CI fails the build if a token-shaped string is ever committed.
