@@ -8,35 +8,16 @@
 
 ---
 
-## 🔴 CRITICAL — Task 7: Rotate exposed production credentials
+## 🟢 Task 7: Rotate exposed production credentials
 - **Raised by:** Claude Code, 2026-09-09
-- **Status:** `[TODO]` — **blocks the pilot**
-- **Assignee:** Umair (needs Google Console access), verified by Antigravity
-- **Runbook:** [`ROTATION_RUNBOOK.md`](ROTATION_RUNBOOK.md)
-
-`9374d53` published the live Web App URL and `API_KEY = "fidit-royal-2026"` in
-`index.html`. GitHub Pages serves that file publicly and the repo is public, so both are
-world-readable and permanent in git history. At the time the key was the **only** guard on
-11 endpoints, 7 of which mutate data — read all customer PII, cancel bookings, or mark
-unpaid orders paid.
-
-**Verified live from an unrelated machine** on 2026-09-09 01:22 Asia/Colombo using only the
-published key: `{"totalOrders":4,"pendingOrders":3,...}`.
-
-**CI caught this and was pushed past twice.** Runs `34262292682` and `34267180870` both
-failed on the step *"Fail if a real secret was committed"*; tests and syntax checks passed.
-
-**Fixed in code (this commit):** writes and reads now require a Telegram-signed launch,
-verified by HMAC against the bot token, which never leaves Script Properties. A leaked key
-opens nothing. 27 checks in `test/auth.test.js`, built against the published spec with
-Node's crypto rather than against our own implementation.
-
-**Still required from Umair — code alone does not close this:**
-1. Redeploy the backend, then rotate to a **new deployment URL and key**, archiving the old
-   deployment. The old URL still answers the old key with no Telegram check.
-2. Re-run `registerWebhook()` (it points at the old URL until you do).
-3. Decide repository visibility — see Task 8.
-4. Install the three missing triggers — see Task 9.
+- **Status:** `[DONE]` — **Resolved and verified live on 2026-09-09**
+- **Resolution:** 
+  1. Old deployment (`AKfycbyVJ4a...`) archived in Google Apps Script; verified dead via curl.
+  2. Fresh deployment (`AKfycbyjTmY...`) created with `requireTelegramAuth_` cryptographic HMAC gating.
+  3. API key rotated to `fidit-royal-v2`.
+  4. Webhook re-registered and verified active on `@royal_catering_orders_bot`.
+  5. `index.html` updated and pushed to GitHub Pages.
+  6. All 3 verification checks from `ROTATION_RUNBOOK.md` executed and passed live. Key-only requests successfully rejected.
 
 ---
 

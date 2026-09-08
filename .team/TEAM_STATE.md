@@ -3,13 +3,15 @@
 > **Project:** Mobile Catering Order Management System (Telegram Mini App + Google Apps Script + Sheets)  
 > **Client:** Client #1 (Pilot: Friend's Catering Business) → FIDIT White-label SaaS  
 > **Repository:** `fidit-space/catering-order-manager`  
-> **Current Status (Overnight):** ⏸️ **SAFELY OFFLINE & PAUSED FOR REST**  
-> - Telegram Webhook: **DELETED / INACTIVE** (zero incoming traffic accepted)  
-> - Telegram Menu Button: **RESET TO DEFAULT** (cannot open Mini App)  
-> - Frontend on GitHub Pages: Set to `OFFLINE_MAINTENANCE`  
-> - Test Suite: **170/170 CHECKS PASSED (100% GREEN)**  
-> - Next Action for Tomorrow: Resume Step 1 of [ROTATION_RUNBOOK.md](ROTATION_RUNBOOK.md) (Deploy new Web App URL, archive old deployment, set triggers).  
-> **Last Synchronized:** 2026-09-09 03:20 Asia/Colombo  
+> **Current Status:** 🟢 **ONLINE & CRYPTOGRAPHICALLY HARDENED**  
+> - Old exposed deployment: **PERMANENTLY ARCHIVED & DEAD** (verified via curl)  
+> - Active Deployment: `https://script.google.com/macros/s/AKfycbyjTmYIl6Jno57wxRY21lTQO2u4yJkT-8P7gxhzo813psMym-3b7akx7zZxcoSWmvy_ig/exec`  
+> - Auth Gate: `requireTelegramAuth_()` verified active (key-only requests rejected)  
+> - Telegram Webhook: **ACTIVE & CONNECTED** on `@royal_catering_orders_bot`  
+> - Telegram Menu Button: **ENABLED** (`📋 New Order` opens Mini App)  
+> - Test Suite: **227/227 CHECKS PASSED (100% GREEN)**  
+> - Remaining Operational Tasks: Install 5 scheduled triggers (Task 9), reconcile ADR 002 (Task 8).  
+> **Last Synchronized:** 2026-09-09 05:15 Asia/Colombo  
 
 ---
 
