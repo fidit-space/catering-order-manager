@@ -213,6 +213,35 @@ function initSheets() {
 }
 
 /**
+ * Records which deployment Telegram should talk to.
+ *
+ * Paste the Web App URL between the quotes below and press Run. This exists
+ * because ScriptApp.getService().getUrl() reports the "/dev" head URL in this
+ * project, the Run button cannot pass an argument, and typing a long URL into
+ * the Script Properties table is easy to get wrong — it was stored as "/exec"
+ * on the first attempt.
+ *
+ * Safe to re-run whenever the deployment URL changes. Not a secret: this URL
+ * is already published inside index.html.
+ */
+function setDeploymentUrl() {
+  var url = '';   // <-- paste the /exec URL here, between the quotes
+
+  if (!url) {
+    throw new Error('Paste your Web App URL between the quotes in setDeploymentUrl() first. ' +
+      'Find it under Deploy > Manage deployments — it ends in /exec.');
+  }
+  var clean = String(url).replace(/\s+/g, '').split('?')[0].replace(/\/+$/, '');
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(clean)) {
+    throw new Error('That is not a deployment URL — got "' + clean + '". It must start with ' +
+      'https://script.google.com/macros/s/ and end in /exec.');
+  }
+
+  props_().setProperty('DEPLOYMENT_URL', clean);
+  return 'Saved:\n' + clean + '\n\nNow run registerWebhook().';
+}
+
+/**
  * STEP 3 — Run AFTER deploying as a Web App. Enables the Telegram buttons.
  *
  * Run this again after EVERY "Deploy > New deployment", because that mints a
@@ -250,10 +279,14 @@ function registerWebhook() {
  * new deployment when you already have the URL in front of you.
  */
 function registerWebhookAt(url) {
-  var clean = String(url || '').trim();
+  // Tolerate what a phone paste actually produces: stray whitespace, newlines,
+  // a trailing slash, or a copied "?..." query string.
+  var clean = String(url || '').replace(/\s+/g, '').split('?')[0].replace(/\/+$/, '');
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(clean)) {
-    throw new Error('Not a deployment URL. Expected ' +
-      'https://script.google.com/macros/s/.../exec — got "' + clean + '"');
+    throw new Error('Not a deployment URL — got "' + clean + '". It must be the whole ' +
+      'address, starting with https://script.google.com/macros/s/ and ending in /exec. ' +
+      'Easiest fix: open setDeploymentUrl() near the top of this file, paste the URL ' +
+      'between the quotes, and run it.');
   }
 
   var res = telegramApi_('setWebhook', {

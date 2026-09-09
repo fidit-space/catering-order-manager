@@ -357,6 +357,31 @@ module.exports = function (t) {
   t.check('registerWebhookAt refuses a non-Apps-Script URL',
     badError.includes('Not a deployment URL'), badError || 'no error thrown');
 
+  // A half-pasted URL stored the value "/exec" and the error did not say what
+  // to do about it. Now it quotes what it got and names the way out.
+  let partial = '';
+  try { registerWebhookAt('/exec'); } catch (e) { partial = e.message; }
+  t.check('a half-pasted URL is quoted back',
+    partial.includes('got "/exec"'), partial);
+  t.check('and the error names the fix', partial.includes('setDeploymentUrl'), partial);
+
+  const good = 'https://script.google.com/macros/s/PASTED/exec';
+  SENT.length = 0;
+  registerWebhookAt('  ' + good + '/  ');
+  t.check('whitespace and a trailing slash from a phone paste are tolerated',
+    SENT.find(m => m.method === 'setWebhook').payload.url.indexOf(good) === 0,
+    SENT.find(m => m.method === 'setWebhook').payload.url);
+  SENT.length = 0;
+  registerWebhookAt(good + '?action=health');
+  t.check('a copied query string is stripped',
+    SENT.find(m => m.method === 'setWebhook').payload.url.indexOf(good + '?wh=') === 0,
+    SENT.find(m => m.method === 'setWebhook').payload.url);
+
+  let unset = '';
+  try { setDeploymentUrl(); } catch (e) { unset = e.message; }
+  t.check('setDeploymentUrl says what to paste when left blank',
+    unset.includes('paste') || unset.includes('Paste'), unset);
+
   t.section('diagnose() answers "is it wired up?"');
   SENT.length = 0;
   const report = diagnose();

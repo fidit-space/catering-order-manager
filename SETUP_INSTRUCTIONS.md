@@ -94,10 +94,13 @@ no `last_error_message`.
 name the real deployment once and it will never ask again:
 
 1. **Deploy → Manage deployments**, copy the `/exec` URL of the active entry
-2. **⚙️ Project Settings → Script Properties → Add script property**
-   - Property: `DEPLOYMENT_URL`
-   - Value: that `/exec` URL
+2. Scroll to **`setDeploymentUrl()`** near the top of `Code.gs`, paste the URL between the
+   quotes, save, and **Run** it once
 3. Run **`registerWebhook`** again
+
+> Pasting into Script Properties by hand works too (property `DEPLOYMENT_URL`), but it is easy
+> to get wrong — the first live attempt stored the value as just `/exec`, and the bot stayed
+> down. `setDeploymentUrl()` validates the URL before saving it.
 
 The `/dev` URL demands a Google login, so Telegram is served a login page, gets **401**, and
 drops every update — the bot answers nothing at all and no error appears anywhere. This is why
