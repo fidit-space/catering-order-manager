@@ -125,9 +125,12 @@ Read the summary it returns. Run it again and it should say *"Nothing to migrate
 
 ## Step 4c — Check everything is wired up (30 seconds)
 
-Choose **diagnose** in the function dropdown and press **Run**. The report arrives in your
-Telegram chat and in the execution log, and covers the four things that have gone wrong
-silently before:
+**Send `/status` to the bot.** That is the whole health check, and it works from a phone.
+
+If the bot is not answering yet, run **diagnose** from the function dropdown instead — same
+report, delivered to the execution log as well as to Telegram.
+
+The report covers the things that have gone wrong silently before:
 
 - **Webhook** — is one registered, does it match this deployment, is there a delivery error
 - **Properties** — which credentials are set (names only; values are never printed)
@@ -136,7 +139,32 @@ silently before:
   no margin figures will ever appear)
 - **Recent errors** — the last five rows of the Log tab
 
-Run this first whenever something looks wrong. It is faster than guessing.
+### When to run it
+
+| When | Why |
+|---|---|
+| **After every deployment** | A new version can leave the webhook pointing at an old URL. This is the check that catches it before the bot goes quiet. |
+| **After adding or changing triggers** | It lists which of the five are actually installed. Three were missing for weeks without anyone noticing. |
+| **Every Monday, with the backup** | Thirty seconds. Catches a trigger that was deleted, a credential that was cleared, a Menu tab that lost its costs. |
+| **The moment anything looks wrong** | Faster than guessing, and it has found the cause every time so far. |
+
+### Reading the report
+
+Every line begins `OK`, `WARN`, `MISSING` or `FAIL`. Only `OK` needs no thought.
+
+| Line | What to do |
+|---|---|
+| `FAIL that is the /dev head URL` | Telegram cannot reach that address. Run `registerWebhook`. |
+| `FAIL last delivery error: 401` | Same cause as above — Telegram is being shown a Google login page. |
+| `MISSING <function name>` under TRIGGERS | That scheduled job has never run. Add it from Step 5. |
+| `FAIL ... run migrateSheets()` | The Orders tab is on an older schema. Step 4b. |
+| `FAIL no margin can be calculated` | The Menu `Cost` column is empty. Fill it in; nothing else can fix it. |
+| `WARN ALLOW_BROWSER_ACCESS is ON` | Deliberate? If not, delete that property. |
+| `WARN Extra users allowed: ...` | Someone besides you can open the app. Check the ids are people you added. |
+| Anything under RECENT ERRORS | The last five rows of the Log tab. Recent entries usually name the real problem. |
+
+The report prints property **names** only, plus the bot id and your own user id. No credential
+value ever reaches the chat.
 
 ### If the Mini App says "Sign-in data failed verification"
 

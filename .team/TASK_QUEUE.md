@@ -189,6 +189,56 @@ writes nothing.
 
 ---
 
+## 🔴 Task 13: Comprehensive audit — 9 findings, 4 fixed
+- **Assignee:** Claude Code
+- **Status:** `[READY_FOR_AUDIT]`
+- **Trigger:** Umair: *"do complete comprehensive audit"*, then *"fix and let me know"*
+
+### 🔴 F-01 — the browser escape hatch could write money (fixed, `bc49558`)
+`requireTelegramAuth_` waved through anything absent from `WRITE_ACTIONS`. That deny-list was
+written before the finance release added `recordPayment`, `recordRefund` and `recordExpense`,
+so all three counted as reads: with `ALLOW_BROWSER_ACCESS` on, money could be written into the
+Ledger using only `API_KEY` — which `index.html` publishes. The same gap exposed `orders`,
+`unpaid`, `money`, `ledger` and `customer`.
+
+Replaced with `BROWSER_SAFE_ACTIONS`, an allow-list of `health` and `menu`. A deny-list fails
+open when a route is forgotten; an allow-list fails closed. Tested: an unclassified future
+route defaults to denied.
+
+### Also fixed
+| # | Was |
+|---|---|
+| **F-02** | `markOrderPaid_` read the outstanding balance **before** taking the lock. Two taps on "Paid" both saw the full balance and both recorded it — order Overpaid, books overstating income. `recordPaymentHeld_` / `recordRefundHeld_` split out so the read and write happen under one lock. The cancellation refund button had the identical shape; `refundAllHeld_` closes it. |
+| **F-04** | `checkDispatchAlerts` sent every alert, then wrote the "sent" flags in a second loop. One Telegram failure or a six-minute timeout left **every** delivered alert unflagged, so the next run re-sent them all. Each flag is now written immediately after its own send, inside a per-order try/catch. `sendTelegram_` now throws when both the HTML and plain-text attempts fail, so a caller can never record "sent" against a message nobody received. |
+| **F-05** | The offline queue retried forever and discarded the error — the banner said "1 item waiting to be sent" indefinitely while the cook believed the order was saved. Attempts are now counted, the reason kept and shown, automatic flushes stop after 4 tries, and Retry / Discard are offered. |
+| **Flaky test** | `checkDispatchAlerts` was asserted **by count**, so a fixture with a fixed 19:00 delivery drifted in and out of the 185-minute window depending on the time of day — green in CI (UTC), red every Colombo afternoon. Now asserted by identity. Third wall-clock assertion this project has had; the rule is in `test/README.md`. |
+
+### Open, reported not fixed
+- **F-03** Mini App sign-in. Algorithm verified correct against the spec and an independent
+  implementation; both `signature` forms are tried. Cause is almost certainly a
+  `TELEGRAM_BOT_TOKEN` belonging to a different bot. `explainAuthFailure()` settles it.
+- **F-06** `initData` — a 24-hour replay credential — travels in the URL query string on every
+  read. Writes already use the body. Moving reads to `doPost` is mechanical but touches every
+  read route, so it is filed rather than rushed.
+- **F-07/08/09** Lock discipline on `advanceOrderStatus_`/`cancelOrder_` (benign today), five
+  individual `setValue` calls in `syncOrderMoney_`, and a check string that sorts whole lines
+  rather than keys (correct by accident for Telegram's current field names).
+
+### `/status`
+The health check was reachable only from the Apps Script editor on a desktop. The owner works
+from a phone, so `diagnose()` is now also a bot command and a button on the menu keyboard.
+`SETUP_INSTRUCTIONS.md` gains a "when to run it" table and a line-by-line reading guide.
+
+### For the auditor
+- ⚠️ **F-01 is the finding to check first.** It was live-exploitable if
+  `ALLOW_BROWSER_ACCESS` was ever set; `diagnose()` now reports whether it is.
+- 🟠 The audit's real conclusion is that **six of the last nine faults lived in Google settings,
+  invisible to every test**. The suite covers behaviour thoroughly and configuration not at all.
+  `/status` is the first answer to that; a stronger one would be a trigger that runs it weekly.
+- ⚪ 415 checks, up from 387.
+
+---
+
 ## 🚀 Active Sprint: Security Hardening & Internal Pilot
 
 ### Task 1: Fix IP Protection (Standalone Script Mode)

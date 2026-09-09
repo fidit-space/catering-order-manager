@@ -202,4 +202,50 @@ module.exports = function (t) {
   sendMonthReport_();
   t.check('the month report shows a margin percentage',
     SENT.some(m2 => /Margin \d+%/.test(m2.payload.text || '')));
+
+  t.section('Settling in full is atomic');
+  // markOrderPaid_ read the outstanding balance BEFORE taking the lock, then
+  // called a locked writer. Two taps on "Paid" — easy on a slow phone — both
+  // saw the full balance and both recorded it, leaving the order Overpaid and
+  // the books showing more money than the customer handed over.
+  const twice = saveOrder_({
+    itemsJson: [{ name: 'Chicken Dum Biryani', unit: 'Pax', qty: 20, rate: 950 }],
+    itemsSummary: 'Chicken Dum Biryani: 20 Pax',
+    deliveryDate: '2026-09-20', deliveryTime: '13:00',
+    customerName: 'Double Tap', customerPhone: '0771230009',
+    totalAmount: 19000, advancePaid: 4000
+  }).orderId;
+
+  t.check('starts owing 15,000', num_(findOrderRow_(twice)[COL.BALANCE]) === 15000, String(num_(findOrderRow_(twice)[COL.BALANCE])));
+  const first = markOrderPaid_(twice, 'Cash', 'owner');
+  const second = markOrderPaid_(twice, 'Cash', 'owner');
+
+  t.check('the first tap collects the outstanding 15,000', first.collected === 15000, String(first.collected));
+  t.check('the second tap collects nothing', second.collected === 0, String(second.collected));
+  t.check('the order is settled, not overpaid',
+    num_(findOrderRow_(twice)[COL.BALANCE]) === 0, String(num_(findOrderRow_(twice)[COL.BALANCE])));
+  t.check('received equals the total, never more',
+    orderReceived_(twice) === 19000, String(orderReceived_(twice)));
+  t.check('exactly one settlement entry reached the Ledger',
+    readLedger_().filter(r => r[LED.ORDER] === twice && r[LED.CATEGORY] === 'Settlement').length === 1,
+    readLedger_().filter(r => r[LED.ORDER] === twice).map(r => r[LED.CATEGORY]).join(','));
+
+  t.section('Refunding a cancellation is atomic too');
+  const ref = saveOrder_({
+    itemsJson: [{ name: 'Chicken Dum Biryani', unit: 'Pax', qty: 10, rate: 950 }],
+    itemsSummary: 'Chicken Dum Biryani: 10 Pax',
+    deliveryDate: '2026-09-21', deliveryTime: '13:00',
+    customerName: 'Refund Twice', customerPhone: '0771230010',
+    totalAmount: 9500, advancePaid: 3000
+  }).orderId;
+
+  t.check('holds the 3,000 advance', orderReceived_(ref) === 3000, String(orderReceived_(ref)));
+  const r1 = refundAllHeld_(ref, 'Cash', 'owner');
+  const r2 = refundAllHeld_(ref, 'Cash', 'owner');
+  t.check('the first refund returns 3,000', r1.refunded === 3000, String(r1.refunded));
+  t.check('the second finds nothing left to refund', r2.refunded === 0, String(r2.refunded));
+  t.check('the order holds nothing afterwards', orderReceived_(ref) === 0, String(orderReceived_(ref)));
+  t.check('and the money is not refunded into a negative',
+    readLedger_().filter(r => r[LED.ORDER] === ref && r[LED.TYPE] === 'Refund Out').length === 1);
+
 };

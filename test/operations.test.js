@@ -229,7 +229,7 @@ module.exports = function (t) {
   // button was empty and there was no /help, so the owner had to be told.
   t.check('every listed command is routable', BOT_COMMANDS.every(c =>
     ['today', 'tomorrow', 'yesterday', 'week', 'pending', 'owed',
-     'cash', 'month', 'pay', 'spend', 'help'].includes(c.command)),
+     'cash', 'month', 'pay', 'spend', 'help', 'status'].includes(c.command)),
     BOT_COMMANDS.map(c => c.command).join(','));
   t.check('each carries a description Telegram will accept',
     BOT_COMMANDS.every(c => c.description.length > 0 && c.description.length <= 256));
@@ -251,6 +251,16 @@ module.exports = function (t) {
   t.check('the fallback menu offers help too', say('hello')[0].payload.reply_markup
     && JSON.stringify(say('hello')[0].payload.reply_markup).includes('cmd_help'));
   t.check('the help button works', tap('cmd_help').length === 1);
+
+  // The health check had to be run from the Apps Script editor on a desktop.
+  // The owner works from a phone, so it has to be reachable from the chat.
+  const status = say('/status');
+  t.check('/status runs the system check from the chat', status.length === 1, String(status.length));
+  t.check('and reports the webhook state', status[0].payload.text.includes('WEBHOOK'));
+  t.check('without printing any credential value',
+    !status[0].payload.text.includes(PROPS.TELEGRAM_BOT_TOKEN) &&
+    !status[0].payload.text.includes(PROPS.WEBHOOK_SECRET));
+  t.check('the menu offers it as a button too', tap('cmd_status').length === 1);
 
   t.section('New day-range commands');
   const weekOrder = saveOrder_({

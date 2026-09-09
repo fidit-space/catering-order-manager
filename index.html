@@ -108,6 +108,7 @@
     }
     .alert.warn { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
     .alert.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .pending-reason { flex-basis: 100%; opacity: .85; font-size: .85em; margin-top: 2px; }
     .alert button {
       margin-left: auto; border: none; border-radius: 8px; padding: 8px 12px;
       font-weight: 700; background: rgba(0,0,0,0.12); color: inherit; font-size: 0.82rem;
@@ -325,7 +326,9 @@
 
   <div class="alert warn" id="pendingBanner" hidden>
     <span id="pendingText"></span>
+    <span id="pendingReason" class="pending-reason" hidden></span>
     <button type="button" id="retryPendingBtn">Retry</button>
+    <button type="button" id="discardPendingBtn" hidden>Discard</button>
   </div>
 
   <div class="alert error" id="configBanner" hidden>
@@ -1109,22 +1112,54 @@ function resetForm() {
 /* ============================================================
    Offline queue — a failed save is never a lost order
    ============================================================ */
+var MAX_SEND_ATTEMPTS = 4;
+
 function queuePending(request) {
   var pending = lsGet(LS.PENDING, []);
-  pending.push({ at: Date.now(), request: request });
+  pending.push({ at: Date.now(), attempts: 0, error: '', request: request });
   lsSet(LS.PENDING, pending);
   renderPendingBanner();
 }
 
+function discardPending() {
+  lsSet(LS.PENDING, []);
+  renderPendingBanner();
+  notify('Discarded', 'The waiting items were removed. Anything you still need, book again.');
+}
+
+/*
+ * The banner used to say only "N items waiting to be sent", forever, with the
+ * failure reason thrown away. An order that could never succeed sat there
+ * silently while the owner believed it was saved. It now says WHY, and stops
+ * pretending it is still trying once it has given up.
+ */
 function renderPendingBanner() {
   var pending = lsGet(LS.PENDING, []);
+  var stuck = pending.filter(function (p) { return (p.attempts || 0) >= MAX_SEND_ATTEMPTS; });
+
   $('pendingBanner').hidden = pending.length === 0;
-  if (pending.length) {
-    $('pendingText').textContent = '📥 ' + pending.length + ' item' + (pending.length === 1 ? '' : 's') + ' waiting to be sent';
+  $('discardPendingBtn').hidden = stuck.length === 0;
+  if (!pending.length) return;
+
+  var noun = pending.length === 1 ? 'item' : 'items';
+  if (stuck.length) {
+    $('pendingText').textContent = '⚠️ ' + stuck.length + ' ' + noun + ' could not be sent';
+    $('pendingReason').textContent = stuck[0].error || 'The server refused it.';
+    $('pendingReason').hidden = false;
+  } else {
+    $('pendingText').textContent = '📥 ' + pending.length + ' ' + noun + ' waiting to be sent';
+    $('pendingReason').hidden = true;
   }
 }
 
-function flushPending(silent) {
+/**
+ * Sends whatever is waiting.
+ *
+ * `force` is the Retry button: it gives up-to-date items another go even after
+ * they have hit the attempt limit. Automatic flushes leave those alone, so a
+ * request that can never succeed stops cycling and starts asking for help.
+ */
+function flushPending(silent, force) {
   var pending = lsGet(LS.PENDING, []);
   if (!pending.length || !isConfigured()) return;
 
@@ -1139,9 +1174,26 @@ function flushPending(silent) {
       if (sent) loadOrders();
       return;
     }
-    apiPost(pending[i].request)
+
+    var item = pending[i];
+    item.attempts = item.attempts || 0;
+
+    // Already given up on, and this is not the owner pressing Retry: keep it
+    // untouched so the banner can keep showing what went wrong.
+    if (item.attempts >= MAX_SEND_ATTEMPTS && !force) {
+      remaining.push(item);
+      return next(i + 1);
+    }
+
+    apiPost(item.request)
       .then(function () { sent++; })
-      .catch(function () { remaining.push(pending[i]); })
+      .catch(function (err) {
+        item.attempts++;
+        // apiPost has already run the message through friendlyError; running
+        // it again re-matches the rewritten text and replaces the whole thing.
+        item.error = (err && err.message) ? err.message : String(err);
+        remaining.push(item);
+      })
       .then(function () { next(i + 1); });
   })(0);
 }
@@ -1594,7 +1646,8 @@ $('editPaymentBtn').addEventListener('click', function () {
   if (editingOrderId) recordPaymentFor(editingOrderId);
 });
 $('submitBtn').addEventListener('click', submitOrder);
-$('retryPendingBtn').addEventListener('click', function () { flushPending(false); });
+$('retryPendingBtn').addEventListener('click', function () { flushPending(false, true); });
+$('discardPendingBtn').addEventListener('click', discardPending);
 $('customerPhone').addEventListener('input', scheduleCustomerLookup);
 $('deliveryDate').addEventListener('change', renderDateChips);
 $('advancePaid').addEventListener('input', refreshBalance);

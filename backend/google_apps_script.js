@@ -175,7 +175,8 @@ var BOT_COMMANDS = [
   { command: 'month',     description: 'This month: revenue, costs, profit' },
   { command: 'pay',       description: 'Record a payment — /pay 20000' },
   { command: 'spend',     description: 'Record a cost — /spend 4500 chicken' },
-  { command: 'help',      description: 'What every command does' }
+  { command: 'help',      description: 'What every command does' },
+  { command: 'status',    description: 'Check the system is wired up correctly' }
 ];
 
 // ==================== ONE-TIME SETUP ====================
@@ -1319,17 +1320,32 @@ function orderStatus_(orderId) {
  * advance-versus-on-delivery figure in the books was wrong after one tap.
  * It now appends a ledger entry for the amount actually outstanding.
  */
+/*
+ * Settles whatever is still owed, in one atomic step.
+ *
+ * The read and the write MUST happen inside the same lock. Reading the
+ * outstanding balance first and then calling a locked writer let two taps on
+ * "Paid" — an easy thing to do on a slow phone — both see the full balance and
+ * both record it, leaving the order Overpaid and the books showing more money
+ * than the customer handed over.
+ */
 function markOrderPaid_(orderId, method, by) {
-  var order = findOrderRow_(orderId);
-  if (!order) throw new Error('Order not found: ' + orderId);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var order = findOrderRow_(orderId);
+    if (!order) throw new Error('Order not found: ' + orderId);
 
-  var outstanding = num_(order[COL.TOTAL]) - orderReceived_(orderId);
-  if (outstanding <= 0) {
-    return { status: 'success', orderId: orderId, collected: 0, note: 'Already settled.' };
+    var outstanding = num_(order[COL.TOTAL]) - orderReceived_(orderId);
+    if (outstanding <= 0) {
+      return { status: 'success', orderId: orderId, collected: 0, note: 'Already settled.' };
+    }
+
+    var result = recordPaymentHeld_(orderId, outstanding, method || 'Cash', by, 'Settled in full', 'Settlement');
+    return { status: 'success', orderId: orderId, collected: outstanding, balance: result.balance };
+  } finally {
+    lock.releaseLock();
   }
-
-  var result = recordPayment_(orderId, outstanding, method || 'Cash', by, 'Settled in full', 'Settlement');
-  return { status: 'success', orderId: orderId, collected: outstanding, balance: result.balance };
 }
 
 /** Orders between two yyyy-MM-dd dates (inclusive). Defaults to today .. +30 days. */
@@ -1472,7 +1488,7 @@ function checkDispatchAlerts() {
     var now = Date.now();
     var lead = Number(getSetting_('dispatch_lead_minutes', 180)) || 180;
     var sent = 0;
-    var flags = [];
+    var failed = 0;
 
     for (var i = 1; i < data.length; i++) {
       var r = data[i];
@@ -1490,16 +1506,23 @@ function checkDispatchAlerts() {
       // orders booked at short notice, which otherwise get no alert at all.
       if (diffMin > lead + 5 || diffMin < -120) continue;
 
-      sendDispatchAlert_(r, diffMin);
-      flags.push(i + 1);
-      sent++;
+      // Mark each alert the moment it is sent, not in a second pass at the
+      // end. Flagging afterwards meant one Telegram failure — or hitting the
+      // six-minute execution limit — left EVERY alert already delivered this
+      // run unflagged, so the next run fifteen minutes later sent them all
+      // again. Repeating urgent alarms are worse than a missed one.
+      try {
+        sendDispatchAlert_(r, diffMin);
+        sheet.getRange(i + 1, COL.DISPATCH_SENT + 1).setValue('YES');
+        sent++;
+      } catch (err) {
+        // Left unflagged on purpose, so the next run retries this order alone.
+        logError_('checkDispatchAlerts', err);
+        failed++;
+      }
     }
 
-    flags.forEach(function (rowNum) {
-      sheet.getRange(rowNum, COL.DISPATCH_SENT + 1).setValue('YES');
-    });
-
-    return sent + ' dispatch alert(s) sent';
+    return sent + ' dispatch alert(s) sent' + (failed ? ', ' + failed + ' failed and will retry' : '');
   } finally {
     lock.releaseLock();
   }
@@ -1919,6 +1942,22 @@ function recordPayment_(orderId, amount, method, by, note, category) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
+    return recordPaymentHeld_(orderId, amount, method, by, note, category);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/*
+ * The body of recordPayment_, for callers that ALREADY hold the script lock.
+ *
+ * Apps Script locks are not reentrant, so a locked caller cannot simply call
+ * recordPayment_ — it would deadlock. Settling in full has to read the
+ * outstanding balance and write the payment without letting go in between, or
+ * two taps on "Paid" both read the same balance and both record it. Never call
+ * this without the lock.
+ */
+function recordPaymentHeld_(orderId, amount, method, by, note, category) {
     var order = findOrderRow_(orderId);
     if (!order) throw new Error('Order not found: ' + orderId);
 
@@ -1935,9 +1974,6 @@ function recordPayment_(orderId, amount, method, by, note, category) {
 
     var money = syncOrderMoney_(orderId);
     return { status: 'success', orderId: orderId, received: money.received, balance: money.balance, paymentStatus: money.paymentStatus };
-  } finally {
-    lock.releaseLock();
-  }
 }
 
 /** Records money given back — a cancelled order, or a complaint settled. */
@@ -1945,6 +1981,14 @@ function recordRefund_(orderId, amount, method, by, note) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
+    return recordRefundHeld_(orderId, amount, method, by, note);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** The body of recordRefund_, for callers already holding the lock. */
+function recordRefundHeld_(orderId, amount, method, by, note) {
     if (!findOrderRow_(orderId)) throw new Error('Order not found: ' + orderId);
 
     addLedgerEntry_({
@@ -1955,6 +1999,22 @@ function recordRefund_(orderId, amount, method, by, note) {
 
     var money = syncOrderMoney_(orderId);
     return { status: 'success', orderId: orderId, received: money.received, balance: money.balance };
+}
+
+/*
+ * Refunds everything the order is holding, reading and writing under one lock.
+ * The cancellation button used to read the held amount, then call the locked
+ * writer — two taps refunded twice.
+ */
+function refundAllHeld_(orderId, method, by, note) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var held = orderReceived_(orderId);
+    if (held <= 0) return { status: 'success', orderId: orderId, refunded: 0, note: 'Nothing to refund.' };
+    var res = recordRefundHeld_(orderId, held, method || 'Cash', by, note || 'Refunded on cancellation');
+    res.refunded = held;
+    return res;
   } finally {
     lock.releaseLock();
   }
@@ -2619,13 +2679,12 @@ function handleCallbackQuery_(query) {
 
     } else if (data.indexOf('refund_') === 0) {
       var refundId = data.substring('refund_'.length);
-      var held = orderReceived_(refundId);
-      if (held <= 0) {
+      var refund = refundAllHeld_(refundId, 'Cash', describeUser_(query.from));
+      if (!refund.refunded) {
         answer = 'Nothing to refund on this order.';
       } else {
-        recordRefund_(refundId, held, 'Cash', describeUser_(query.from), 'Refunded on cancellation');
-        answer = 'Refund of ' + CURRENCY + ' ' + fmtMoney_(held) + ' recorded';
-        stampMessage_(query, '💸 REFUNDED ' + CURRENCY + ' ' + fmtMoney_(held));
+        answer = 'Refund of ' + CURRENCY + ' ' + fmtMoney_(refund.refunded) + ' recorded';
+        stampMessage_(query, '💸 REFUNDED ' + CURRENCY + ' ' + fmtMoney_(refund.refunded));
       }
 
     } else if (data === 'cmd_today') {
@@ -2649,6 +2708,9 @@ function handleCallbackQuery_(query) {
     } else if (data === 'cmd_help') {
       sendHelp_();
       answer = 'Commands';
+    } else if (data === 'cmd_status') {
+      diagnose();
+      answer = 'System check';
 
     } else if (data.indexOf('payto_') === 0) {
       // payto_<orderId>_<amount>_<method>. Order ids never contain "_", so the
@@ -2721,6 +2783,7 @@ function handleBotMessage_(message) {
   text = text.replace(/@[a-z0-9_]+\b/, '');
 
   if (text === '/help') return sendHelp_();
+  if (text === '/status') return diagnose();
   if (text === '/today') return sendDayList_(today, 'Today');
   if (text === '/tomorrow') return sendDayList_(tomorrow, 'Tomorrow');
   if (text === '/yesterday') return sendDayList_(yesterday, 'Yesterday');
@@ -2750,7 +2813,10 @@ function handleBotMessage_(message) {
           { text: '💵 Cash Today', callback_data: 'cmd_cash' },
           { text: '📊 This Month', callback_data: 'cmd_month' }
         ],
-        [{ text: '❓ What can I type?', callback_data: 'cmd_help' }]
+        [
+          { text: '❓ What can I type?', callback_data: 'cmd_help' },
+          { text: '🩺 System check', callback_data: 'cmd_status' }
+        ]
       ]
     });
 }
@@ -2869,11 +2935,20 @@ function sendTelegram_(chatId, html, replyMarkup) {
   var res = telegramApi_('sendMessage', payload);
   if (res && res.ok === false) {
     logError_('sendTelegram', new Error('HTML send failed: ' + (res.description || '')));
-    telegramApi_('sendMessage', {
+    // Telegram rejects the whole message for one bad tag, so retry as plain
+    // text rather than losing an alert over formatting.
+    var plain = telegramApi_('sendMessage', {
       chat_id: chatId,
       text: html.replace(/<[^>]+>/g, ''),
       disable_web_page_preview: true
     });
+    if (!plain || plain.ok !== true) {
+      // Callers that record "sent" against a sheet row need to know this
+      // failed, or they mark an alert delivered that nobody ever received.
+      throw new Error('Telegram refused the message: ' +
+        ((plain && plain.description) || res.description || 'no response'));
+    }
+    return plain;
   }
   return res;
 }

@@ -100,21 +100,34 @@ module.exports = function (t) {
   t.check('sums money to collect', digest.message.includes('157,000'), digest.message.slice(-120));
 
   t.section('H9 / C2: dispatch alert actually fires');
+  // Asserted by IDENTITY, never by count. The fixtures above use fixed clock
+  // times, so whether they also fall inside the 185-minute dispatch window
+  // depends on what time of day the suite runs — this assertion was counting
+  // alerts and went red every afternoon while CI, running in UTC, stayed
+  // green. Third time this project has been bitten by a wall-clock assertion.
   const soon = new Date(Date.now() + 90 * 60000);
-  saveOrder_({
+  const urgent = saveOrder_({
     itemsJson: [{ name: 'Mutton Mandhi Special', unit: 'Packs', qty: 4, rate: 2400 }],
     itemsSummary: 'Mutton Mandhi Special: 4 Packs',
     deliveryDate: Utilities.formatDate(soon, TZ, 'yyyy-MM-dd'),
     deliveryTime: Utilities.formatDate(soon, TZ, 'HH:mm'),
     customerName: 'Urgent Customer', customerPhone: '0771112233',
     totalAmount: 9600, advancePaid: 0
-  });
+  }).orderId;
   SENT.length = 0;
   const out = checkDispatchAlerts();
-  t.check('one alert sent for the 90-minute order', out === '1 dispatch alert(s) sent', out);
+  const alertFor = id => SENT.some(m => m.payload.text && m.payload.text.includes(id));
+
+  t.check('the 90-minute order was alerted', alertFor(urgent), out);
   t.check('alert mentions dispatch', SENT.some(s => s.payload.text && s.payload.text.includes('COOK')));
-  const again = checkDispatchAlerts();
-  t.check('does not send twice', again === '0 dispatch alert(s) sent', again);
+  t.check('the order is flagged as sent, not left to fire again',
+    String(findOrderRow_(urgent)[COL.DISPATCH_SENT]).toUpperCase() === 'YES',
+    String(findOrderRow_(urgent)[COL.DISPATCH_SENT]));
+  t.check('a far-future order is not alerted', !alertFor('2026-09-10'), out);
+
+  SENT.length = 0;
+  checkDispatchAlerts();
+  t.check('does not send twice', !alertFor(urgent), SENT.length + ' message(s) on the second run');
 
   t.section('Update & status changes');
   const upd = updateOrder_(res.orderId, { deliveryTime: '18:00' });

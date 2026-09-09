@@ -126,14 +126,16 @@ All of these appear in Telegram's blue **Menu** button, so nothing has to be rem
 | `/pay 20000` | Record a payment — the bot asks which customer, as buttons |
 | `/spend 4500 chicken` | Record a cost; the category is worked out from the words |
 | `/help` | The list above, in the chat |
+| `/status` | Health check — webhook, credentials, scheduled jobs, sheet schema, recent errors |
 
 Add `bank` or `card` at the end of `/pay` or `/spend` when it was not cash. The explicit
 `/pay <order id> 20000` form still works for scripted use.
 
-**When something looks wrong**, run `diagnose()` in the Apps Script editor. It reports the
-webhook, the credentials that are set (by name, never value), which scheduled jobs are
-installed, the sheet schema, and the last errors — and sends the report to Telegram so it can
-be read on a phone.
+**When something looks wrong, send `/status`.** It reports the webhook, the credentials that are
+set (by name, never value), which scheduled jobs are installed, the sheet schema, and the last
+errors. Run it after every deployment and once a week — six of the last nine faults in this
+system lived in Google settings rather than in code, where no test can see them. `diagnose()`
+in the Apps Script editor prints the same report, for when the bot itself is not answering.
 
 ---
 

@@ -92,13 +92,63 @@ module.exports = function (t, done) {
     setTimeout(() => {
       t.check('queue drains', JSON.parse(page.store['cat_pending_v1'] || '[]').length === 0);
 
-      t.section('The summary sent to the customer');
-      const text = customerSummaryText(payload, 'ORD-260908-120000-A1B');
-      t.check('lists the dishes', text.includes('Chicken Dum Biryani — 60 Pax'));
-      t.check('states the balance', text.includes('Balance on delivery: Rs. 37,000'));
-      t.check('asks them to confirm', /confirm/i.test(text));
+      t.section('A request that can never succeed stops cycling and says why');
+      // It used to retry forever with the error thrown away, showing only
+      // "1 item waiting to be sent". An order that could not be accepted sat
+      // there indefinitely while the cook believed it had been saved.
+      page.serve(() => Promise.resolve({
+        ok: true, status: 200,
+        json: () => Promise.resolve({ status: 'error', message: 'Sign-in data failed verification.' })
+      }));
+      page.store['cat_pending_v1'] = JSON.stringify([
+        { at: Date.now(), attempts: 0, error: '', request: { action: 'newOrder', order: payload } }
+      ]);
 
-      done();
+      (function attempt(n) {
+        if (n === 0) {
+          const q = JSON.parse(page.store['cat_pending_v1']);
+          t.check('the item is still held, never dropped', q.length === 1);
+          t.check('attempts are counted', q[0].attempts === MAX_SEND_ATTEMPTS,
+            String(q[0].attempts));
+          // The stored text is what apiPost already turned the server's words
+          // into — a sign-in failure becomes instructions, because "Sign-in
+          // data failed verification" tells a cook nothing they can act on.
+          t.check('the reason is kept, not swallowed', q[0].error.length > 0, q[0].error);
+          t.check('and it tells the owner what to do about it',
+            /Telegram/i.test(q[0].error), q[0].error);
+          t.check('it is stored once, not re-rewritten on every retry',
+            q[0].error === friendlyError(q[0].error), q[0].error);
+
+          renderPendingBanner();
+          t.check('the banner stops saying it is still trying',
+            /could not be sent/.test(el('pendingText').textContent), el('pendingText').textContent);
+          t.check('the banner shows the reason', !el('pendingReason').hidden);
+          t.check('and offers a way out', !el('discardPendingBtn').hidden);
+
+          // An automatic flush must leave a given-up item alone rather than
+          // hammering the server on every reconnect.
+          flushPending(true);
+          setTimeout(() => {
+            t.check('an automatic flush no longer retries it',
+              JSON.parse(page.store['cat_pending_v1'])[0].attempts === MAX_SEND_ATTEMPTS,
+              String(JSON.parse(page.store['cat_pending_v1'])[0].attempts));
+
+            discardPending();
+            t.check('discarding clears it', JSON.parse(page.store['cat_pending_v1']).length === 0);
+            t.check('and the banner goes away', el('pendingBanner').hidden);
+
+            t.section('The summary sent to the customer');
+            const text = customerSummaryText(payload, 'ORD-260908-120000-A1B');
+            t.check('lists the dishes', text.includes('Chicken Dum Biryani — 60 Pax'));
+            t.check('states the balance', text.includes('Balance on delivery: Rs. 37,000'));
+            t.check('asks them to confirm', /confirm/i.test(text));
+            done();
+          }, 30);
+          return;
+        }
+        flushPending(true, true);
+        setTimeout(() => attempt(n - 1), 25);
+      })(MAX_SEND_ATTEMPTS);
     }, 40);
   }, 40);
 };
