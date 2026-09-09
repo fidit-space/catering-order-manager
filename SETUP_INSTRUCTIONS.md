@@ -93,14 +93,16 @@ no `last_error_message`.
 **If it refuses because it found a `/dev` URL** — which is what this project's editor reports —
 name the real deployment once and it will never ask again:
 
-1. **Deploy → Manage deployments**, copy the `/exec` URL of the active entry
-2. Scroll to **`setDeploymentUrl()`** near the top of `Code.gs`, paste the URL between the
-   quotes, save, and **Run** it once
-3. Run **`registerWebhook`** again
+The deployment URL is written down in **`DEPLOYMENT_URL`**, a constant at the very top of
+`backend/google_apps_script.js`. `registerWebhook` uses it, so normally there is nothing to do.
 
-> Pasting into Script Properties by hand works too (property `DEPLOYMENT_URL`), but it is easy
-> to get wrong — the first live attempt stored the value as just `/exec`, and the bot stayed
-> down. `setDeploymentUrl()` validates the URL before saving it.
+If you deploy to a **new** URL, either update that constant and paste the whole file in again,
+or add a `DEPLOYMENT_URL` script property with the new value — the property wins over the
+constant, and `diagnose()` prints which one is in force.
+
+> Editing one line inside a large file on a phone is unreliable: two live attempts left the
+> file with a syntax error or stored the value as just `/exec`, and the bot stayed down both
+> times. Replacing the **whole file** is the reliable operation, so the URL travels with it.
 
 The `/dev` URL demands a Google login, so Telegram is served a login page, gets **401**, and
 drops every update — the bot answers nothing at all and no error appears anywhere. This is why

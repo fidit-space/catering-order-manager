@@ -317,6 +317,11 @@ module.exports = function (t) {
   t.section('Webhook registration cannot silently target a dead URL');
   // Deploy > New deployment mints a fresh /exec URL. Telegram kept posting to
   // the old one and the bot went completely silent, with no error anywhere.
+  //
+  // The shipped constant is blanked for these checks so the fallback chain
+  // below (property -> constant -> getUrl) is exercised link by link.
+  const shippedUrl = DEPLOYMENT_URL;
+  DEPLOYMENT_URL = '';
   SENT.length = 0;
   const summary = registerWebhook();
   const setHook = SENT.find(m => m.method === 'setWebhook');
@@ -348,9 +353,11 @@ module.exports = function (t) {
   t.check('DEPLOYMENT_URL overrides the /dev URL the editor reports',
     pinnedHook.payload.url.indexOf('https://script.google.com/macros/s/PINNED/exec') === 0,
     pinnedHook.payload.url);
-  t.check('diagnose says the pin is in force', diagnose().includes('DEPLOYMENT_URL property is set'));
+  t.check('diagnose says which source the target came from',
+    diagnose().includes('(DEPLOYMENT_URL property)'));
   delete PROPS.DEPLOYMENT_URL;
   global.SCRIPT_URL = realUrl;
+  DEPLOYMENT_URL = shippedUrl;
 
   let badError = '';
   try { registerWebhookAt('https://evil.example.com/exec'); } catch (e) { badError = e.message; }
@@ -377,10 +384,22 @@ module.exports = function (t) {
     SENT.find(m => m.method === 'setWebhook').payload.url.indexOf(good + '?wh=') === 0,
     SENT.find(m => m.method === 'setWebhook').payload.url);
 
-  let unset = '';
-  try { setDeploymentUrl(); } catch (e) { unset = e.message; }
-  t.check('setDeploymentUrl says what to paste when left blank',
-    unset.includes('paste') || unset.includes('Paste'), unset);
+  // Asking the owner to paste a URL between two quote marks broke the file
+  // twice on a phone. The URL now lives in a constant that ships with the
+  // file, so pasting the whole file is the only step.
+  t.check('the shipped DEPLOYMENT_URL constant is a real /exec deployment',
+    /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(DEPLOYMENT_URL),
+    DEPLOYMENT_URL);
+  t.check('and it is the same URL index.html calls',
+    require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8')
+      .includes(DEPLOYMENT_URL),
+    'index.html points somewhere else — the Mini App and the bot would disagree');
+
+  SENT.length = 0;
+  registerWebhook();
+  t.check('with no property set, registerWebhook uses the constant',
+    SENT.find(m => m.method === 'setWebhook').payload.url.indexOf(DEPLOYMENT_URL) === 0,
+    SENT.find(m => m.method === 'setWebhook').payload.url);
 
   t.section('diagnose() answers "is it wired up?"');
   SENT.length = 0;
