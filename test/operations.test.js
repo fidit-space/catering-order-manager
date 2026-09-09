@@ -357,6 +357,50 @@ module.exports = function (t) {
   t.check('it sends itself to the owner so it can be read on a phone',
     SENT.some(m => m.method === 'sendMessage' && m.payload.chat_id === PROPS.TELEGRAM_OWNER_CHAT_ID));
 
+  t.check('it names the bot the token belongs to, so a token for the WRONG bot shows up',
+    /Token belongs to:/.test(report), report.split('BOT')[1] ? report.split('BOT')[1].slice(0, 80) : '');
+
+  // The first version of this reported "OK matches this deployment" while the
+  // registered URL was a /dev head URL returning 401 to Telegram. A check that
+  // passes on the broken state is worse than no check.
+  SENT.length = 0;
+  global.WEBHOOK_URL_OVERRIDE = 'https://script.google.com/macros/s/TEST/dev?wh=x';
+  const devReport = diagnose();
+  t.check('a /dev webhook is a failure, never an "OK"',
+    /FAIL\s+that is the \/dev head URL/.test(devReport),
+    devReport.split('WEBHOOK')[1] ? devReport.split('WEBHOOK')[1].slice(0, 200) : '');
+  t.check('and the WEBHOOK_SECRET is stripped before display', !devReport.includes('wh=x'));
+  global.WEBHOOK_URL_OVERRIDE = null;
+
+  t.section('explainAuthFailure() names the cause');
+  t.check('it says nothing was captured until it is switched on',
+    explainAuthFailure().includes('Nothing captured'));
+  t.check('debugAuthOn arms the capture', debugAuthOn().includes('open the Mini App'));
+
+  // A launch signed by a DIFFERENT bot: the exact live symptom — every other
+  // check healthy, sign-in failing, and no way to tell why.
+  const wrongBot = telegram.launchAs('999999:otherbot', PROPS.TELEGRAM_OWNER_CHAT_ID,
+    { signature: 'AbCdEf_test-signature' });
+  t.check('a foreign launch is rejected', validateInitData_(wrongBot).ok === false);
+  const verdict = explainAuthFailure();
+  t.check('the failing launch was captured', !verdict.includes('Nothing captured'));
+  t.check('every construction is tried', (verdict.match(/\n  (MATCH|no)/g) || []).length === 4,
+    String((verdict.match(/\n  (MATCH|no)/g) || []).length));
+  t.check('none of them match, because the key is wrong', !verdict.includes('MATCH  '));
+  t.check('and it says so in plain words',
+    verdict.includes('the KEY is wrong') && verdict.includes('@BotFather'));
+  t.check('it never prints the token',
+    !verdict.includes(PROPS.TELEGRAM_BOT_TOKEN) && !verdict.includes('999999:otherbot'));
+
+  // The same launch signed by the RIGHT bot must be identified as verifiable,
+  // so a genuine algorithm bug is not misreported as a wrong token.
+  const rightBot = telegram.launchAs(PROPS.TELEGRAM_BOT_TOKEN, PROPS.TELEGRAM_OWNER_CHAT_ID,
+    { signature: 'AbCdEf_test-signature' });
+  t.check('a correctly signed launch with a signature field verifies',
+    validateInitData_(rightBot).ok === true, JSON.stringify(validateInitData_(rightBot)).slice(0, 90));
+  t.check('debugAuthOff clears the stored launch',
+    debugAuthOff().includes('deleted') && explainAuthFailure().includes('Nothing captured'));
+
   const allTriggers = global.INSTALLED_TRIGGERS;
   global.INSTALLED_TRIGGERS = ['checkDispatchAlerts'];
   const gappy = diagnose();

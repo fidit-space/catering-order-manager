@@ -84,6 +84,7 @@ global.PropertiesService = {
   getScriptProperties: () => ({
     getProperty: k => (k in PROPS ? PROPS[k] : null),
     setProperty: (k, v) => { PROPS[k] = String(v); },
+    deleteProperty: k => { delete PROPS[k]; },
     setProperties: o => Object.assign(PROPS, o)
   })
 };
@@ -106,11 +107,20 @@ global.ContentService = {
   createTextOutput: t => ({ _t: t, setMimeType() { return this; }, getContent() { return this._t; } })
 };
 
+// Lets a test put the webhook into a known bad state (a /dev URL) without
+// reaching into the backend.
+global.WEBHOOK_URL_OVERRIDE = null;
 global.UrlFetchApp = {
   fetch(url, opts) {
     const method = url.split('/').pop();
     SENT.push({ method, payload: JSON.parse(opts.payload) });
-    return { getContentText: () => JSON.stringify({ ok: true, result: {} }) };
+    let result = {};
+    if (method === 'getMe') result = { id: 8856703286, username: 'test_bot' };
+    if (method === 'getWebhookInfo') {
+      result = { url: global.WEBHOOK_URL_OVERRIDE ||
+        'https://script.google.com/macros/s/TEST/exec?wh=whsecret', pending_update_count: 0 };
+    }
+    return { getContentText: () => JSON.stringify({ ok: true, result }) };
   }
 };
 

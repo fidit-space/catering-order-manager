@@ -314,6 +314,21 @@ function diagnose() {
     add('  ' + (props_().getProperty(k) ? 'OK      ' : 'MISSING ') + k);
   });
 
+  // --- Which bot is this token actually for? ---
+  // A token that authenticates fine against the API can still belong to a
+  // DIFFERENT bot from the one the Mini App was opened from, and then every
+  // initData signature fails while everything else looks healthy.
+  add('');
+  add('BOT');
+  var me = telegramApi_('getMe', {});
+  if (me && me.ok && me.result) {
+    add('  Token belongs to: @' + me.result.username + '  (id ' + me.result.id + ')');
+    add('  The Mini App must be opened from THIS bot, or sign-in will always fail.');
+  } else {
+    add('  FAIL    getMe failed: ' + ((me && me.description) || 'no response') +
+        ' — TELEGRAM_BOT_TOKEN is not a working token.');
+  }
+
   // --- Webhook: the thing that was broken. ---
   add('');
   add('WEBHOOK');
@@ -323,19 +338,37 @@ function diagnose() {
   var hook = (info && info.result) || {};
   var registered = String(hook.url || '').split('?')[0];   // drop WEBHOOK_SECRET
 
-  add('  Registered:      ' + (registered || '(none — the bot cannot receive anything)'));
-  add('  This deployment: ' + (deployed || '(unknown)'));
+  add('  Registered:  ' + (registered || '(none — the bot cannot receive anything)'));
   if (!registered) {
-    add('  FAIL    no webhook set. Run registerWebhook().');
-  } else if (deployed && registered !== deployed) {
-    add('  FAIL    MISMATCH — Telegram is posting to a different deployment.');
-    add('          Run registerWebhookAt("' + deployed + '")');
+    add('  FAIL    no webhook set. Run registerWebhookAt("<your /exec url>").');
+  } else if (registered.indexOf('/dev') !== -1) {
+    // The head URL demands a Google login, so Telegram gets a 401 and every
+    // update is dropped. The bot goes silent with nothing to show for it.
+    add('  FAIL    that is the /dev head URL. Telegram cannot sign in to Google,');
+    add('          so every update comes back 401 and the bot answers nothing.');
+    add('          Fix: Deploy > Manage deployments, copy the /exec URL, then');
+    add('          run registerWebhookAt("<that url>")');
+  } else if (registered.indexOf('/exec') === -1) {
+    add('  FAIL    not a deployment URL.');
   } else {
-    add('  OK      matches this deployment');
+    add('  OK      a real /exec deployment');
+    // getUrl() reports the head URL in many projects, so it can confirm a
+    // deployment is wrong but never that it is right. Say so rather than
+    // implying a match that was not checked.
+    if (deployed.indexOf('/exec') !== -1 && deployed !== registered) {
+      add('  FAIL    but this script deploys to ' + deployed);
+    } else if (deployed.indexOf('/dev') !== -1) {
+      add('  NOTE    cannot confirm it is THIS deployment — the editor only');
+      add('          reports the /dev URL. The 401 check below is the real test.');
+    }
   }
   add('  Queued updates:  ' + (hook.pending_update_count || 0));
   if (hook.last_error_message) {
     add('  FAIL    last delivery error: ' + hook.last_error_message);
+    if (String(hook.last_error_message).indexOf('401') !== -1) {
+      add('          401 means Telegram is being shown a Google login page.');
+      add('          The registered URL is not a public /exec deployment.');
+    }
   }
 
   // --- Scheduled jobs. Three of these were missing for weeks. ---
@@ -539,6 +572,16 @@ function validateInitData_(initData) {
     logError_('validateInitData_', new Error(
       'initData did not verify. Fields present: ' + Object.keys(data).sort().join(', ') +
       '. Check that TELEGRAM_BOT_TOKEN matches the bot the app was opened from.'));
+    // Knowing WHICH fields arrived was not enough to solve this on 2026-09-09.
+    // With DEBUG_AUTH switched on, keep the launch itself so
+    // explainAuthFailure() can test it against every plausible construction.
+    // Off by default: this is the owner's own launch data, and it stays inside
+    // their own Script Properties, but there is no reason to hold it always.
+    if (props_().getProperty('DEBUG_AUTH') === 'YES') {
+      try {
+        props_().setProperty('LAST_AUTH_FAILURE', nowStr_() + '\u0000' + initData);
+      } catch (e) { /* diagnosis must never break the request */ }
+    }
     return { ok: false, reason: 'Sign-in data failed verification.' };
   }
 
@@ -794,6 +837,114 @@ function health_(key, initData) {
   out.menuItems = readMenu_().length;
   out.webhookConfigured = !!props_().getProperty('WEBHOOK_SECRET');
   return out;
+}
+
+/**
+ * Switches on capture of the next failing Mini App sign-in. Run this, open the
+ * app from the bot once, then run explainAuthFailure().
+ */
+function debugAuthOn() {
+  props_().setProperty('DEBUG_AUTH', 'YES');
+  props_().deleteProperty('LAST_AUTH_FAILURE');
+  return 'Capture is on. Now open the Mini App from the bot once, then run explainAuthFailure().';
+}
+
+function debugAuthOff() {
+  props_().deleteProperty('DEBUG_AUTH');
+  props_().deleteProperty('LAST_AUTH_FAILURE');
+  return 'Capture is off and the stored launch has been deleted.';
+}
+
+/**
+ * Takes the captured launch apart and says exactly why it did not verify.
+ *
+ * The published algorithm has one ambiguity — whether Bot API 8.0's
+ * "signature" field belongs in the data-check-string — and a token can be
+ * valid for the API while belonging to a different bot from the one the app
+ * was opened from. Both look identical from the outside: "failed
+ * verification". This tries every plausible construction and names the one
+ * that works, or proves that none does and the token is the problem.
+ *
+ * Prints no secret: field NAMES, the bot id (a public identifier), and
+ * whether each candidate matched.
+ */
+function explainAuthFailure() {
+  var stored = props_().getProperty('LAST_AUTH_FAILURE');
+  if (!stored) {
+    return 'Nothing captured. Run debugAuthOn(), open the Mini App from the bot once, then run this again.';
+  }
+
+  var split = stored.indexOf('\u0000');
+  var when = stored.substring(0, split);
+  var initData = stored.substring(split + 1);
+
+  var out = ['AUTH FAILURE — captured ' + when, ''];
+
+  var me = telegramApi_('getMe', {});
+  var botName = (me && me.ok && me.result) ? '@' + me.result.username + ' (id ' + me.result.id + ')' : 'UNKNOWN';
+  out.push('Token in Script Properties belongs to: ' + botName);
+  out.push('');
+
+  var pairs = String(initData).split('&');
+  var hash = '';
+  var decoded = {};
+  var raw = {};
+  pairs.forEach(function (pair) {
+    var eq = pair.indexOf('=');
+    if (eq === -1) return;
+    var key = pair.substring(0, eq);
+    var value = pair.substring(eq + 1);
+    if (key === 'hash') { hash = decodeURIComponent(value); return; }
+    raw[key] = value;
+    decoded[key] = decodeURIComponent(value);
+  });
+
+  out.push('Fields received: ' + Object.keys(decoded).sort().join(', ') + (hash ? ', hash' : ', NO HASH'));
+
+  var user = null;
+  try { user = decoded.user ? JSON.parse(decoded.user) : null; } catch (e) { user = null; }
+  out.push('Opened by user id: ' + (user && user.id ? user.id : 'could not read'));
+  out.push('Owner chat id:     ' + props_().getProperty('TELEGRAM_OWNER_CHAT_ID'));
+  out.push('');
+
+  function build(source, skip) {
+    return Object.keys(source).filter(function (k) { return skip.indexOf(k) === -1; })
+      .sort().map(function (k) { return k + '=' + source[k]; }).join('\n');
+  }
+
+  var secret = Utilities.computeHmacSha256Signature(cfg_('TELEGRAM_BOT_TOKEN'), 'WebAppData');
+  var expected = String(hash).toLowerCase();
+
+  var candidates = [
+    { label: 'decoded values, signature included (the documented form)', s: build(decoded, []) },
+    { label: 'decoded values, signature excluded', s: build(decoded, ['signature']) },
+    { label: 'raw url-encoded values, signature included', s: build(raw, []) },
+    { label: 'raw url-encoded values, signature excluded', s: build(raw, ['signature']) }
+  ];
+
+  out.push('CANDIDATES');
+  var any = false;
+  candidates.forEach(function (c) {
+    var hit = hmacHex_(c.s, secret) === expected;
+    if (hit) any = true;
+    out.push('  ' + (hit ? 'MATCH  ' : 'no     ') + c.label);
+  });
+
+  out.push('');
+  if (any) {
+    out.push('VERDICT: one construction verifies. validateInitData_ needs to use it.');
+  } else {
+    out.push('VERDICT: no construction verifies, so the data is fine and the KEY is wrong.');
+    out.push('The Mini App was opened from a different bot than ' + botName + ',');
+    out.push('or TELEGRAM_BOT_TOKEN was regenerated in @BotFather and not updated here.');
+    out.push('Fix: open @BotFather > /mybots > the bot the app is attached to >');
+    out.push('API Token, and put THAT token in Script Properties.');
+  }
+
+  var report = out.join('\n');
+  try { sendTelegram_(ownerChat_(), '<pre>' + esc_(report) + '</pre>'); } catch (e) { /* log copy is enough */ }
+  Logger.log(report);
+  return report;
 }
 
 // ==================== HTTP: POST ====================
