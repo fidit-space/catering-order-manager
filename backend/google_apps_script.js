@@ -358,6 +358,15 @@ function diagnose() {
     add('  ' + (props_().getProperty(k) ? 'OK      ' : 'MISSING ') + k);
   });
 
+  // --- Who can get in. Silent access widening is worth seeing. ---
+  add('');
+  add('ACCESS');
+  var hatch = props_().getProperty('ALLOW_BROWSER_ACCESS') === 'YES';
+  add('  ' + (hatch ? 'WARN    ' : 'OK      ') + 'ALLOW_BROWSER_ACCESS is ' + (hatch ? 'ON' : 'off') +
+      (hatch ? ' — health and menu are readable without Telegram' : ''));
+  var extra = String(props_().getProperty('EXTRA_TELEGRAM_USER_IDS') || '').trim();
+  add('  ' + (extra ? 'WARN    ' : 'OK      ') + 'Extra users allowed: ' + (extra || 'none — owner only'));
+
   // --- Which bot is this token actually for? ---
   // A token that authenticates fine against the API can still belong to a
   // DIFFERENT bot from the one the Mini App was opened from, and then every
@@ -575,9 +584,23 @@ function alreadyHandled_(updateId) {
  */
 
 /** Actions that change data. These always require a verified Telegram launch. */
-var WRITE_ACTIONS = {
-  newOrder: true, updateOrder: true, cancelOrder: true, markDelivered: true,
-  advanceStatus: true, setStatus: true, markPaid: true
+/*
+ * Which actions the ALLOW_BROWSER_ACCESS escape hatch may serve without a
+ * verified Telegram launch. DEFAULT-DENY: anything not named here needs a
+ * signature, including every route added in future.
+ *
+ * This was a deny-list of write actions, and it was written before the finance
+ * release added recordPayment / recordRefund / recordExpense. Those three were
+ * therefore treated as reads and, with the hatch on, could write money into
+ * the Ledger with nothing but the API key — which is published in index.html.
+ * An allow-list cannot fail that way: forgetting to add a route denies it.
+ *
+ * Only health and menu are listed. The rest carry customer names, phone
+ * numbers, addresses and takings; a public key must never open those.
+ */
+var BROWSER_SAFE_ACTIONS = {
+  health: true,
+  menu: true
 };
 
 /**
@@ -674,8 +697,9 @@ function allowedUserIds_() {
  */
 function requireTelegramAuth_(initData, action) {
   // Escape hatch for setup and debugging from a desktop browser. Off unless
-  // explicitly switched on, and it never applies to write actions.
-  if (props_().getProperty('ALLOW_BROWSER_ACCESS') === 'YES' && !WRITE_ACTIONS[action]) return null;
+  // explicitly switched on, and limited to the two actions that carry no
+  // customer data and move no money.
+  if (props_().getProperty('ALLOW_BROWSER_ACCESS') === 'YES' && BROWSER_SAFE_ACTIONS[action]) return null;
 
   var result = validateInitData_(initData);
   if (!result.ok) throw new Error(result.reason);

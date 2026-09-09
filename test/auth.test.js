@@ -150,13 +150,15 @@ module.exports = function (t) {
   t.check('a verified Telegram launch does see the counts', typeof authed.totalOrders === 'number',
     JSON.stringify(authed));
 
-  t.section('The browser escape hatch is read-only and off by default');
+  t.section('The browser escape hatch is off by default and narrow when on');
   PROPS.ALLOW_BROWSER_ACCESS = 'YES';
-  t.check('reads are permitted when switched on', requireTelegramAuth_('', 'orders') === null);
+  t.check('health is permitted when switched on', requireTelegramAuth_('', 'health') === null);
+  t.throws('reading orders is NOT — it carries names, phones and addresses',
+    () => requireTelegramAuth_('', 'orders'));
   t.throws('writes are still refused', () => requireTelegramAuth_('', 'markPaid'));
   t.throws('and so is cancelling', () => requireTelegramAuth_('', 'cancelOrder'));
   delete PROPS.ALLOW_BROWSER_ACCESS;
-  t.throws('with it off, even reads need Telegram', () => requireTelegramAuth_('', 'orders'));
+  t.throws('with it off, even health needs Telegram', () => requireTelegramAuth_('', 'health'));
 
   t.section('A real order still goes through when properly signed');
   const ok = JSON.parse(doPost({
@@ -176,4 +178,36 @@ module.exports = function (t) {
   }).getContent());
   t.check('the order is accepted', ok.status === 'success', JSON.stringify(ok).slice(0, 120));
   t.check('and reaches the sheet', SS.getSheetByName('Orders').rows.length === 2);
+
+  t.section('The browser escape hatch cannot reach money or customers');
+  // This was a deny-list of write actions written before the finance release.
+  // recordPayment / recordRefund / recordExpense were not on it, so with the
+  // hatch on they were treated as reads: money could be written into the
+  // Ledger with nothing but the API key, which is published in index.html.
+  PROPS.ALLOW_BROWSER_ACCESS = 'YES';
+
+  ['recordPayment', 'recordRefund', 'recordExpense'].forEach(function (action) {
+    let threw = '';
+    try { requireTelegramAuth_('', action); } catch (e) { threw = e.message; }
+    t.check(action + ' still demands a signed launch', threw.length > 0, threw || 'ALLOWED THROUGH');
+  });
+
+  ['orders', 'unpaid', 'money', 'ledger', 'customer'].forEach(function (action) {
+    let threw = '';
+    try { requireTelegramAuth_('', action); } catch (e) { threw = e.message; }
+    t.check(action + ' does not leak customer data to the hatch', threw.length > 0, threw || 'ALLOWED THROUGH');
+  });
+
+  t.check('health stays open, which is what the hatch is for',
+    requireTelegramAuth_('', 'health') === null);
+  t.check('menu stays open — it carries no personal data',
+    requireTelegramAuth_('', 'menu') === null);
+
+  // Default-deny: a route nobody remembered to classify must be closed.
+  let unknown = '';
+  try { requireTelegramAuth_('', 'someRouteAddedNextYear'); } catch (e) { unknown = e.message; }
+  t.check('an unclassified future route defaults to denied', unknown.length > 0, unknown || 'ALLOWED THROUGH');
+
+  delete PROPS.ALLOW_BROWSER_ACCESS;
+
 };
