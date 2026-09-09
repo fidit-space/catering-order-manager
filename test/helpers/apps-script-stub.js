@@ -88,7 +88,16 @@ global.PropertiesService = {
   })
 };
 
-global.LockService = {
+const CACHE = {};
+  global.CacheService = {
+    getScriptCache: () => ({
+      get: k => (k in CACHE ? CACHE[k] : null),
+      put: (k, v) => { CACHE[k] = String(v); },
+      remove: k => { delete CACHE[k]; }
+    })
+  };
+
+  global.LockService = {
   getScriptLock: () => ({ waitLock() {}, tryLock: () => true, releaseLock() {} })
 };
 

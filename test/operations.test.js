@@ -129,6 +129,34 @@ module.exports = function (t) {
   t.check('no pipeline button once delivered', !kbDone.includes('adv_'));
   t.check('no payment button when nothing owed', !kbDone.includes('paid_'));
 
+  t.section('A redelivered update is handled once, not every retry');
+  // Telegram resends an update when the webhook does not answer cleanly and
+  // fast enough. Without a guard, one /cash produced a fresh report on every
+  // retry, for as long as Telegram kept trying.
+  const wh = PROPS.WEBHOOK_SECRET;
+  const cashUpdate = JSON.stringify({
+    update_id: 90001,
+    message: { message_id: 1, chat: { id: Number(PROPS.TELEGRAM_OWNER_CHAT_ID) },
+               from: { id: Number(PROPS.TELEGRAM_OWNER_CHAT_ID), username: 'owner' }, text: '/cash' }
+  });
+  SENT.length = 0;
+  const first = JSON.parse(doPost({ parameter: { wh: wh }, postData: { contents: cashUpdate } }).getContent());
+  const afterFirst = SENT.length;
+  const second = JSON.parse(doPost({ parameter: { wh: wh }, postData: { contents: cashUpdate } }).getContent());
+  const third = JSON.parse(doPost({ parameter: { wh: wh }, postData: { contents: cashUpdate } }).getContent());
+
+  t.check('the first delivery is processed', first.status === 'ok', JSON.stringify(first));
+  t.check('it sent exactly one report', afterFirst === 1, String(afterFirst));
+  t.check('retries are recognised as duplicates',
+    second.status === 'duplicate' && third.status === 'duplicate',
+    second.status + ',' + third.status);
+  t.check('and send nothing further', SENT.length === afterFirst, String(SENT.length));
+
+  const other = JSON.parse(doPost({ parameter: { wh: wh }, postData: { contents:
+    cashUpdate.replace('90001', '90002') } }).getContent());
+  t.check('a genuinely new update still gets through', other.status === 'ok');
+  t.check('and produces its own report', SENT.length === afterFirst + 1, String(SENT.length));
+
   t.section('Advancing a status keeps the whole keyboard');
   // Replacing it with just the next-step button threw away Call, WhatsApp,
   // Map and Mark-paid — the buttons wanted at a customer's door.

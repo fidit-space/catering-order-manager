@@ -265,6 +265,25 @@ function runSelfTest() {
   return summary;
 }
 
+/**
+ * True when this update has been processed already.
+ *
+ * Marks it as seen BEFORE the work runs, so a retry arriving while the first
+ * attempt is still going is dropped too. Cache entries expire on their own,
+ * which is right: an update id is only interesting for as long as Telegram
+ * might resend it.
+ */
+function alreadyHandled_(updateId) {
+  if (!updateId) return false;
+
+  var cache = CacheService.getScriptCache();
+  var key = 'update_' + updateId;
+  if (cache.get(key)) return true;
+
+  cache.put(key, '1', 21600);   // 6 hours, the cache maximum
+  return false;
+}
+
 // ==================== TELEGRAM IDENTITY VERIFICATION ====================
 
 /*
@@ -607,6 +626,14 @@ function doPost(e) {
         return json_({ status: 'forbidden' });
       }
       var update = JSON.parse(e.postData.contents);
+
+      // Telegram redelivers an update whenever the webhook does not answer
+      // cleanly and quickly enough — and Apps Script cold starts plus a few
+      // sheet reads are easily slow enough to trip that. Without this guard a
+      // single /cash produced a fresh report every retry, for as long as
+      // Telegram kept trying.
+      if (alreadyHandled_(update.update_id)) return json_({ status: 'duplicate' });
+
       if (update.callback_query) handleCallbackQuery_(update.callback_query);
       else if (update.message) handleBotMessage_(update.message);
       return json_({ status: 'ok' });
@@ -1188,6 +1215,7 @@ function migrateSheets_() {
     changes = changes.concat(migrateOrderHeaders_());
     changes = changes.concat(migrateMenuColumns_());
     changes = changes.concat(backfillOpeningBalances_());
+    changes = changes.concat(repairOpeningBalanceDates_());
     changes = changes.concat(backfillOrderCosts_());
 
     settingsSheet_();
@@ -1269,6 +1297,10 @@ function backfillOpeningBalances_() {
       amount: recorded,
       method: 'Unknown',
       by: 'migration',
+      // Dated to when the order was taken, NOT to the migration. Stamping it
+      // with today booked historical money as today's takings and inflated
+      // both the cash report and the day's profit.
+      timestamp: openingBalanceDate_(row),
       note: 'Recorded before the Ledger existed; carried over on ' + nowStr_() +
             '. Payment method was not captured at the time.'
     });
@@ -1279,6 +1311,47 @@ function backfillOpeningBalances_() {
   if (!backfilled) return [];
   return [backfilled + ' order(s) carrying ' + CURRENCY + ' ' + fmtMoney_(total) +
           ' given opening-balance ledger entries'];
+}
+
+/** The best available date for money taken before the Ledger existed. */
+function openingBalanceDate_(row) {
+  var created = String(row[COL.CREATED] || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(created)) return created;
+
+  var delivery = toDateStr_(row[COL.DATE]);
+  if (delivery) return delivery + ' 12:00:00';
+
+  return nowStr_();
+}
+
+/**
+ * Repairs opening balances that were written with the migration's own
+ * timestamp, which made historical money show up as today's income.
+ */
+function repairOpeningBalanceDates_() {
+  var sheet = ledgerSheet_();
+  var rows = sheet.getDataRange().getValues();
+  var orders = {};
+  ordersSheet_().getDataRange().getValues().slice(1).forEach(function (r) {
+    if (r[COL.ID]) orders[r[COL.ID]] = r;
+  });
+
+  var fixed = 0;
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][LED.CATEGORY] !== 'Opening balance') continue;
+    var order = orders[rows[i][LED.ORDER]];
+    if (!order) continue;
+
+    var correct = openingBalanceDate_(order);
+    if (String(rows[i][LED.TIMESTAMP]) === correct) continue;
+
+    sheet.getRange(i + 1, LED.TIMESTAMP + 1).setValue(correct);
+    fixed++;
+  }
+
+  if (!fixed) return [];
+  return [fixed + ' opening balance(s) re-dated to when the order was taken, ' +
+          'so historical money no longer counts as today\'s income'];
 }
 
 /** Fills in cost and margin for existing orders, where the Menu has costs. */
@@ -1339,7 +1412,7 @@ function addLedgerEntry_(entry) {
 
   sheet.appendRow([
     id,
-    nowStr_(),
+    entry.timestamp || nowStr_(),
     entry.type,
     entry.orderId || '',
     entry.category || '',

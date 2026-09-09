@@ -102,6 +102,39 @@ module.exports = function (t) {
   t.check('the earlier advance is still on record',
     readLedger_().filter(r => r[LED.ORDER] === 'ORD-OLD-1').length === 2);
 
+  t.section('Carried-over money is dated to the order, not to the migration');
+  // Stamping it with the migration's own timestamp booked historical money as
+  // today's takings — the cash report showed Rs. 80,000 of old advances as
+  // income earned today, and inflated the day's profit to match.
+  const opening = readLedger_().filter(r => r[LED.CATEGORY] === 'Opening balance')[0];
+  t.check('it carries the order\'s creation date', String(opening[LED.TIMESTAMP]).indexOf('2026-09-01') === 0,
+    String(opening[LED.TIMESTAMP]));
+  const todayStr = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+  // Today should contain the 37,000 genuinely settled earlier in this suite,
+  // and NOT the 20,000 advance carried over from an order taken on 1 Sep.
+  t.check('today shows only money actually taken today',
+    summariseMoney_(todayStr, todayStr).paymentsIn === 37000,
+    String(summariseMoney_(todayStr, todayStr).paymentsIn));
+  t.check('but it still counts in the period it belongs to',
+    summariseMoney_('2026-09-01', '2026-09-01').paymentsIn === 20000,
+    String(summariseMoney_('2026-09-01', '2026-09-01').paymentsIn));
+  t.check('and the order balance is unaffected', orderReceived_('ORD-OLD-1') === 57000);
+
+  t.section('Wrongly dated opening balances are repaired');
+  const led = SS.getSheetByName('Ledger');
+  const row = led.rows.findIndex(r => r[LED.CATEGORY] === 'Opening balance');
+  led.rows[row][LED.TIMESTAMP] = nowStr_();          // simulate the bad stamp
+  t.check('the historical 20,000 now pollutes today',
+    summariseMoney_(todayStr, todayStr).paymentsIn === 57000,
+    String(summariseMoney_(todayStr, todayStr).paymentsIn));
+  const repaired = migrateSheets_();
+  t.check('the repair reports itself', /re-dated/.test(repaired), repaired);
+  t.check('and today is back to only today\'s money',
+    summariseMoney_(todayStr, todayStr).paymentsIn === 37000,
+    String(summariseMoney_(todayStr, todayStr).paymentsIn));
+  t.check('the carried-over money is back where it belongs',
+    summariseMoney_('2026-09-01', '2026-09-01').paymentsIn === 20000);
+
   t.section('Costs backfill once the Menu has them');
   menuTab.rows[1][6] = 550;
   const second = migrateSheets_();
