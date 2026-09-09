@@ -298,6 +298,7 @@ function validateInitData_(initData) {
   var pairs = String(initData).split('&');
   var hash = '';
   var fields = [];
+  var withoutSignature = [];
   var data = {};
 
   for (var i = 0; i < pairs.length; i++) {
@@ -306,23 +307,36 @@ function validateInitData_(initData) {
     var key = decodeURIComponent(pairs[i].substring(0, eq));
     var value = decodeURIComponent(pairs[i].substring(eq + 1));
     if (key === 'hash') { hash = value; continue; }
-    if (key === 'signature') continue; // Ed25519 field, not part of the HMAC
+
     data[key] = value;
     fields.push(key + '=' + value);
+    // Bot API 8.0 added "signature" (Ed25519, for third-party validation).
+    // Telegram's own spec excludes only "hash" from the HMAC check string, so
+    // signature belongs in it — dropping it made every launch from a recent
+    // client fail verification. Both forms are tried below because which one
+    // a given client signs is not worth guessing at.
+    if (key !== 'signature') withoutSignature.push(key + '=' + value);
   }
 
   if (!hash) return { ok: false, reason: 'Sign-in data is missing its signature.' };
 
-  // Telegram requires the remaining fields sorted by key, joined with newlines.
   fields.sort();
-  var checkString = fields.join('\n');
+  withoutSignature.sort();
 
   // secret = HMAC(key: "WebAppData", message: bot token)
   var secret = Utilities.computeHmacSha256Signature(cfg_('TELEGRAM_BOT_TOKEN'), 'WebAppData');
-  var computed = Utilities.computeHmacSha256Signature(
-    Utilities.newBlob(checkString).getBytes(), secret);
+  var expected = String(hash).toLowerCase();
 
-  if (toHex_(computed) !== String(hash).toLowerCase()) {
+  var matched = hmacHex_(fields.join('\n'), secret) === expected ||
+    (fields.length !== withoutSignature.length &&
+     hmacHex_(withoutSignature.join('\n'), secret) === expected);
+
+  if (!matched) {
+    // Logged so a future mismatch is diagnosable instead of a dead end. No
+    // secret is recorded — only which fields arrived.
+    logError_('validateInitData_', new Error(
+      'initData did not verify. Fields present: ' + Object.keys(data).sort().join(', ') +
+      '. Check that TELEGRAM_BOT_TOKEN matches the bot the app was opened from.'));
     return { ok: false, reason: 'Sign-in data failed verification.' };
   }
 
@@ -370,6 +384,12 @@ function requireTelegramAuth_(initData, action) {
     throw new Error('This app is private to the business owner.');
   }
   return result.user;
+}
+
+/** HMAC-SHA256 of a string with a byte-array key, hex encoded. */
+function hmacHex_(text, secret) {
+  return toHex_(Utilities.computeHmacSha256Signature(
+    Utilities.newBlob(text).getBytes(), secret));
 }
 
 /** Hex-encodes the signed byte array Apps Script returns. */

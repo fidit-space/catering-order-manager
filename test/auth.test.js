@@ -44,12 +44,49 @@ module.exports = function (t) {
   t.check('signature verifies', good.ok === true, good.reason);
   t.check('the user is identified', good.user && String(good.user.id) === String(OWNER_ID));
 
+  t.section('A launch from a modern client, which sends a signature field');
+  // Bot API 8.0 added "signature". Telegram's spec excludes only "hash" from
+  // the HMAC check string, so signature belongs in it. Dropping it made every
+  // launch from a recent Telegram client fail verification in production while
+  // every test here passed, because none of them sent the field.
+  const modern = sign({
+    auth_date: String(Math.floor(Date.now() / 1000)),
+    query_id: 'AAF_test',
+    signature: 'k1LDlOJqRk7wZ0nQ2s8xYbAaCcDdEeFf',
+    user: JSON.stringify({ id: Number(OWNER_ID), first_name: 'Umair', username: 'owner' })
+  });
+  const modernResult = validateInitData_(modern);
+  t.check('it verifies', modernResult.ok === true, modernResult.reason);
+  t.check('and identifies the user', String(modernResult.user.id) === String(OWNER_ID));
+  t.check('the owner is let in', !!requireTelegramAuth_(modern, 'orders'));
+
+  // Belt and braces: a client that signed WITHOUT the signature field must
+  // still verify, since which form is signed is not worth guessing at.
+  const legacyStyle = (function () {
+    const fields = {
+      auth_date: String(Math.floor(Date.now() / 1000)),
+      query_id: 'AAF_legacy',
+      user: JSON.stringify({ id: Number(OWNER_ID), first_name: 'Umair' })
+    };
+    const signed = sign(fields);                       // hash over fields WITHOUT signature
+    return signed + '&signature=' + encodeURIComponent('addedAfterTheHash');
+  })();
+  t.check('a signature added after the hash still verifies',
+    validateInitData_(legacyStyle).ok === true, validateInitData_(legacyStyle).reason);
+
   t.section('Forged and tampered launches are rejected');
   t.check('a launch signed with the wrong token fails',
     validateInitData_(sign({ auth_date: '1', user: '{"id":1}' }, '9999:WRONGTOKEN')).ok === false);
 
   const tampered = launch().replace(/user=[^&]*/, 'user=' + encodeURIComponent('{"id":999,"first_name":"Mallory"}'));
   t.check('editing the user after signing breaks the hash', validateInitData_(tampered).ok === false);
+  const tamperedModern = modern.replace(/user=[^&]*/, 'user=' + encodeURIComponent('{"id":999,"first_name":"Mallory"}'));
+  t.check('and still breaks it when a signature is present',
+    validateInitData_(tamperedModern).ok === false);
+  t.check('a forged signature field cannot be swapped in',
+    validateInitData_(modern.replace(/signature=[^&]*/, 'signature=forged')).ok === false);
+  t.check('a failed verification is logged for diagnosis',
+    SS.getSheetByName('Log').rows.some(r => /did not verify/.test(String(r[2]))));
 
   t.check('empty initData is rejected', validateInitData_('').ok === false);
   t.check('missing hash is rejected', validateInitData_('auth_date=1&user=%7B%22id%22%3A1%7D').ok === false);
