@@ -29,7 +29,39 @@
       --accent: #f59e0b;
       --success: #10b981;
       --danger: #ef4444;
+
+      /* Status and money colours. Telegram's dark theme is a common default,
+         and the previous hardcoded values sat at 2.3-3.2:1 against it — the
+         cash-box figure, the largest number on the Money screen, was among
+         them. These are light-ground values; the dark block below replaces
+         them so every chip clears 4.5:1 on either ground. */
+      --tone-info: #0369a1;
+      --tone-warn: #b45309;
+      --tone-busy: #6d28d9;
+      --tone-good: #047857;
+      --tone-info-bg: rgba(2, 132, 199, 0.14);
+      --tone-warn-bg: rgba(245, 158, 11, 0.18);
+      --tone-busy-bg: rgba(139, 92, 246, 0.16);
+      --tone-good-bg: rgba(16, 185, 129, 0.14);
       --tap: 48px;
+    }
+
+    /* Telegram sets --tg-theme-bg-color; when the client is dark the light
+       tones above become unreadable, so lift them. Also covers a dark OS for
+       anyone opening the console in a browser. */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --tone-info: #7cc4f5;
+        --tone-warn: #f0b429;
+        --tone-busy: #c4b0f7;
+        --tone-good: #5fd7ac;
+      }
+    }
+    body.tg-dark {
+      --tone-info: #7cc4f5;
+      --tone-warn: #f0b429;
+      --tone-busy: #c4b0f7;
+      --tone-good: #5fd7ac;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -82,8 +114,13 @@
     }
 
     /* ---------- Pills ---------- */
-    .pills { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; scrollbar-width: none; }
-    .pills::-webkit-scrollbar { display: none; }
+    /* Wrapped, not scrolled. The category row hid 365px of itself behind an
+       invisible horizontal scroll — Curries, Desserts and Custom were simply
+       unreachable unless you guessed the row moved. */
+    .pills {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      padding-bottom: 2px; margin-bottom: 12px;
+    }
 
     .pill {
       background: var(--soft); border: 1px solid transparent; color: var(--hint);
@@ -156,7 +193,7 @@
 
     .hint-chip {
       display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
-      background: rgba(16,185,129,0.14); color: #047857; border-radius: 10px;
+      background: var(--tone-good-bg); color: var(--tone-good); border-radius: 10px;
       padding: 8px 10px; font-size: 0.8rem; font-weight: 600;
     }
 
@@ -171,7 +208,7 @@
     .money-row + .money-row { border-top: 1px solid var(--border); }
     .money-row.big { font-size: 1.12rem; font-weight: 800; }
     .money-row.big.due span:last-child { color: var(--danger); }
-    .money-row.big.profit span:last-child { color: var(--success); }
+    .money-row.big.profit span:last-child { color: var(--tone-good); }
     .money-row.big.loss span:last-child { color: var(--danger); }
 
     /* ---------- Order cards ---------- */
@@ -199,17 +236,15 @@
 
     /* The order filters must all be visible at 375px — the money view is too
        important to hide behind a horizontal scroll. */
-    #rangeChips { flex-wrap: wrap; overflow-x: visible; }
-
     .stage {
       display: inline-block; margin-top: 6px; padding: 3px 9px; border-radius: 20px;
       font-size: 0.73rem; font-weight: 700; letter-spacing: 0.02em;
       background: var(--soft); color: var(--hint);
     }
-    .stage-confirmed { background: rgba(2,132,199,0.14); color: #0369a1; }
-    .stage-cooking { background: rgba(245,158,11,0.18); color: #b45309; }
-    .stage-out-for-delivery { background: rgba(139,92,246,0.16); color: #6d28d9; }
-    .stage-delivered { background: rgba(16,185,129,0.16); color: #047857; }
+    .stage-confirmed { background: var(--tone-info-bg); color: var(--tone-info); }
+    .stage-cooking { background: var(--tone-warn-bg); color: var(--tone-warn); }
+    .stage-out-for-delivery { background: var(--tone-busy-bg); color: var(--tone-busy); }
+    .stage-delivered { background: var(--tone-good-bg); color: var(--tone-good); }
     .stage-tentative { background: rgba(100,116,139,0.16); color: var(--hint); }
 
     .cashbox {
@@ -220,7 +255,7 @@
     .cashbox-label { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em;
       text-transform: uppercase; color: var(--hint); }
     .cashbox-amount { font-size: 2rem; font-weight: 800; margin: 6px 0 4px;
-      font-variant-numeric: tabular-nums; color: #047857; }
+      font-variant-numeric: tabular-nums; color: var(--tone-good); }
     .cashbox-hint { font-size: 0.75rem; color: var(--hint); line-height: 1.4; }
 
     .age-group { margin-bottom: 14px; }
@@ -235,6 +270,19 @@
 
     .margin-note { font-size: 0.78rem; color: var(--hint); margin-top: 5px; }
     .margin-note.thin { color: var(--danger); font-weight: 700; }
+
+    .sheet-backdrop {
+      position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.45);
+      display: flex; align-items: flex-end; justify-content: center;
+    }
+    .sheet {
+      width: 100%; max-width: 480px; background: var(--card); color: var(--text);
+      border-radius: 18px 18px 0 0; padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+    }
+    .sheet h3 { font-size: 1.05rem; font-weight: 800; margin-bottom: 4px; }
+    .sheet-hint { font-size: 0.82rem; color: var(--hint); margin-bottom: 12px; }
+    .sheet-actions { display: flex; gap: 10px; margin-top: 14px; }
+    .sheet-actions .mini-btn { min-height: 48px; font-size: 0.95rem; }
 
     .empty { text-align: center; padding: 44px 16px; color: var(--hint); font-size: 0.9rem; }
     .empty .big { font-size: 2.6rem; display: block; margin-bottom: 10px; }
@@ -366,9 +414,23 @@
           <input type="number" id="totalAmount" inputmode="decimal" placeholder="0" />
         </div>
         <div class="form-group">
-          <label for="advancePaid">Advance (Rs.)</label>
+          <label for="advancePaid"><span id="advanceLabel">Advance (Rs.)</span></label>
           <input type="number" id="advancePaid" inputmode="decimal" placeholder="0" />
         </div>
+      </div>
+      <div class="form-group" id="advanceMethodGroup">
+        <label for="advanceMethod">Paid by</label>
+        <select id="advanceMethod">
+          <option value="Cash">Cash</option>
+          <option value="Bank">Bank transfer</option>
+          <option value="Card">Card</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div id="receivedPanel" hidden>
+        <div class="money-row"><span>Received so far</span><strong id="receivedSoFar">Rs. 0</strong></div>
+        <button type="button" class="mini-btn primary" style="width:100%;min-height:44px;margin-top:8px"
+                id="editPaymentBtn">💵 Record a payment</button>
       </div>
       <div class="money-row"><span>Menu total</span><span id="calcTotal">Rs. 0</span></div>
       <div class="money-row big due"><span>Balance due</span><span id="calcBalance">Rs. 0</span></div>
@@ -445,6 +507,25 @@
     </section>
   </div>
 
+  <!-- ============ AMOUNT SHEET ============ -->
+  <div class="sheet-backdrop" id="amountSheet" hidden>
+    <div class="sheet">
+      <h3 id="amountTitle">Payment</h3>
+      <p class="sheet-hint" id="amountHint"></p>
+      <input type="number" id="amountValue" inputmode="decimal" placeholder="Amount" />
+      <select id="amountMethod" style="margin-top:10px">
+        <option value="Cash">Cash</option>
+        <option value="Bank">Bank transfer</option>
+        <option value="Card">Card</option>
+        <option value="Other">Other</option>
+      </select>
+      <div class="sheet-actions">
+        <button type="button" class="mini-btn" id="amountCancel">Cancel</button>
+        <button type="button" class="mini-btn ok" id="amountSave">Record</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ BOTTOM BARS ============ -->
   <div class="submit-wrap" id="submitWrap">
     <button type="button" class="submit-btn" id="submitBtn">💾 Save order</button>
@@ -481,6 +562,20 @@ if (tg) {
 if (!tg || tg.platform === 'unknown') {
   var b = document.getElementById('consoleBanner');
   if (b) b.hidden = false;
+}
+
+/** Telegram reports its own light/dark scheme; the CSS tones key off this. */
+function applyThemeClass() {
+  var dark = !!(tg && tg.colorScheme === 'dark');
+  if (!dark && tg && tg.themeParams && tg.themeParams.bg_color) {
+    // Fall back to reading the background's brightness when colorScheme is absent.
+    var hex = String(tg.themeParams.bg_color).replace('#', '');
+    if (hex.length === 6) {
+      var r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+      dark = (0.2126 * r + 0.7152 * g + 0.0722 * b) < 128;
+    }
+  }
+  document.body.classList.toggle('tg-dark', dark);
 }
 
 /** True only when Telegram will actually render its own chrome for us. */
@@ -691,7 +786,16 @@ function loadMenu() {
       renderCategories();
     }
   }).catch(function (err) {
-    console.warn('Menu refresh failed, using cached menu:', err.message);
+    // Silently showing the built-in sample menu looks like the real menu with
+    // dishes missing. Say which one is on screen.
+    console.warn('Menu refresh failed:', err.message);
+    if (!cached || !cached.length) {
+      var banner = $('consoleBanner');
+      banner.hidden = false;
+      banner.textContent = inTelegram()
+        ? '⚠️ Could not load your menu — showing a sample. Reopen from the bot to retry.'
+        : '🖥 Console view — showing a sample menu. Open inside Telegram for your real menu and prices.';
+    }
   });
 }
 
@@ -887,6 +991,7 @@ function buildPayload() {
     prepStatus: $('prepStatus').value,
     totalAmount: total,
     advancePaid: advance,
+    paymentMethod: $('advanceMethod').value,
     balanceDue: total - advance,
     specialNotes: $('specialNotes').value.trim()
   };
@@ -994,6 +1099,7 @@ function resetForm() {
   $('prepStatus').value = 'Confirmed';
   $('newOrderTitle').textContent = '🍲 New Order';
   $('newOrderSubtitle').textContent = 'Book an order in under a minute';
+  setMoneyMode(false, 0);
   renderDateChips();
   renderMenu();
   refreshSummary();
@@ -1014,7 +1120,7 @@ function renderPendingBanner() {
   var pending = lsGet(LS.PENDING, []);
   $('pendingBanner').hidden = pending.length === 0;
   if (pending.length) {
-    $('pendingText').textContent = '📥 ' + pending.length + ' order' + (pending.length === 1 ? '' : 's') + ' waiting to be sent';
+    $('pendingText').textContent = '📥 ' + pending.length + ' item' + (pending.length === 1 ? '' : 's') + ' waiting to be sent';
   }
 }
 
@@ -1099,7 +1205,9 @@ function renderOrders(orders) {
       '<button type="button" class="mini-btn bad" data-cancel="' + esc(o.orderId) + '">✕ Cancel</button>';
 
     if (Number(o.balanceDue) > 0 && o.status !== 'Cancelled') {
-      actions += '<button type="button" class="mini-btn" data-paid="' + esc(o.orderId) + '">💵 Mark paid</button>';
+      actions += '<button type="button" class="mini-btn" data-pay="' + esc(o.orderId) +
+                 '" data-balance="' + esc(o.balanceDue) + '">💵 Payment</button>' +
+                 '<button type="button" class="mini-btn" data-paid="' + esc(o.orderId) + '">✔ Paid in full</button>';
     }
 
     return '' +
@@ -1150,6 +1258,10 @@ function editOrder(orderId) {
 
   editingOrderId = orderId;
   totalManuallyEdited = true;
+  // The Advance field was still editable here but updateOrder_ stopped reading
+  // it when money moved to the ledger — typing a new figure silently did
+  // nothing. Show what was actually received, and offer the real action.
+  setMoneyMode(true, o.advancePaid);
   $('deliveryDate').value = o.deliveryDate;
   $('deliveryTime').value = o.deliveryTime;
   $('customerName').value = o.customerName;
@@ -1190,6 +1302,68 @@ function markPaid(orderId) {
       })
       .catch(function (err) { notify('Could not update', err.message); });
   });
+}
+
+/**
+ * Records a part payment. The ledger has always supported instalments — a
+ * deposit, most on delivery, the rest later — but nothing in the app called
+ * it, so the only option was settling the whole balance in one go.
+ */
+function recordPaymentFor(orderId, fallbackBalance) {
+  var order = findOrder(orderId);
+  var outstanding = order ? Number(order.balanceDue) : Number(fallbackBalance || 0);
+  var who = order ? order.customerName : 'this customer';
+
+  promptAmount('Payment from ' + who, outstanding, function (amount, method) {
+    if (!amount) return;
+    if (amount > outstanding + 0.5) {
+      confirmAsk('That is more than the ' + money(outstanding) + ' outstanding. Record it anyway?',
+        function (yes) { if (yes) postPayment(orderId, amount, method); });
+      return;
+    }
+    postPayment(orderId, amount, method);
+  });
+}
+
+function postPayment(orderId, amount, method) {
+  apiPost({ action: 'recordPayment', orderId: orderId, amount: amount, method: method })
+    .then(function (res) {
+      haptic('medium');
+      notify('Payment recorded', money(amount) + ' received.' +
+        (res.balance > 0 ? '\n\nStill owed: ' + money(res.balance) : '\n\nPaid in full 🎉'));
+      if ($('screenMoney').hidden) loadOrders(); else loadMoney();
+    })
+    .catch(function (err) { notify('Could not save the payment', err.message); });
+}
+
+/**
+ * A small amount + method prompt. Telegram popups cannot take input, so this
+ * is an in-page sheet rather than tg.showPopup.
+ */
+function promptAmount(title, defaultAmount, done) {
+  var sheet = $('amountSheet');
+  $('amountTitle').textContent = title;
+  $('amountValue').value = defaultAmount > 0 ? defaultAmount : '';
+  $('amountHint').textContent = defaultAmount > 0 ? 'Outstanding: ' + money(defaultAmount) : '';
+  sheet.hidden = false;
+  setTimeout(function () { $('amountValue').focus(); }, 50);
+
+  amountSheetDone = function (ok) {
+    sheet.hidden = true;
+    amountSheetDone = null;
+    if (!ok) { done(0); return; }
+    done(Number($('amountValue').value) || 0, $('amountMethod').value);
+  };
+}
+
+var amountSheetDone = null;
+
+/** New orders take an opening advance; existing ones take payments. */
+function setMoneyMode(isEdit, received) {
+  $('advancePaid').parentNode.hidden = isEdit;
+  $('advanceMethodGroup').hidden = isEdit;
+  $('receivedPanel').hidden = !isEdit;
+  if (isEdit) $('receivedSoFar').textContent = money(received || 0);
 }
 
 function changeStatus(orderId, status, question) {
@@ -1291,7 +1465,9 @@ function renderAging(aging) {
             (x.days > 0 ? ' <span class="days">' + x.days + 'd</span>' : '') + '</span>' +
           '<strong>' + money(x.balance) + '</strong>' +
           '<button type="button" class="mini-btn" style="flex:0 0 auto;min-width:64px" data-wa="' + esc(x.phone) + '">💬</button>' +
-          '<button type="button" class="mini-btn ok" style="flex:0 0 auto;min-width:64px" data-paid="' + esc(x.orderId) + '">💵</button>' +
+          '<button type="button" class="mini-btn" style="flex:0 0 auto;min-width:60px" data-pay="' + esc(x.orderId) +
+            '" data-balance="' + esc(x.balance) + '">💵</button>' +
+          '<button type="button" class="mini-btn ok" style="flex:0 0 auto;min-width:60px" data-paid="' + esc(x.orderId) + '">✔</button>' +
         '</div>';
       }).join('') +
     '</div>';
@@ -1305,13 +1481,15 @@ function saveExpense() {
   if (amount <= 0) { notify('Amount needed', 'Enter how much you spent.'); return; }
   if (!description) { notify('What was it for?', 'A word or two is enough — chicken, gas, driver.'); return; }
 
-  apiPost({
+  var request = {
     action: 'recordExpense',
     amount: amount,
     description: description,
     category: chosenCategory || null,
     method: $('expenseMethod').value
-  }).then(function (res) {
+  };
+
+  apiPost(request).then(function (res) {
     haptic('medium');
     $('expenseAmount').value = '';
     $('expenseDesc').value = '';
@@ -1319,7 +1497,9 @@ function saveExpense() {
     notify('Recorded', money(amount) + ' — ' + res.category);
     loadMoney();
   }).catch(function (err) {
-    notify('Could not save', err.message);
+    queuePending(request);
+    notify('Could not save — kept on this phone',
+      err.message + '\n\nIt will be sent when you are back online.');
   });
 }
 
@@ -1362,7 +1542,7 @@ function updateMainButton() {
 document.addEventListener('click', function (e) {
   var t = e.target.closest('[data-category], [data-step], [data-date], [data-range], [data-remove-custom], ' +
     '[data-call], [data-wa], [data-maps], [data-edit], [data-deliver], [data-cancel], ' +
-    '[data-advance], [data-paid], [data-expcat], .tabbar button');
+    '[data-advance], [data-paid], [data-pay], [data-expcat], .tabbar button');
   if (!t) return;
   var d = t.dataset;
 
@@ -1387,6 +1567,7 @@ document.addEventListener('click', function (e) {
   if (d.deliver) { changeStatus(d.deliver, 'Delivered', 'Mark this order as delivered?'); return; }
   if (d.advance) { advanceStatus(d.advance); return; }
   if (d.paid) { markPaid(d.paid); return; }
+  if (d.pay !== undefined) { recordPaymentFor(d.pay, d.balance); return; }
   if (d.expcat !== undefined) {
     chosenCategory = d.expcat;
     document.querySelectorAll('#expenseCategories .pill').forEach(function (p) {
@@ -1404,6 +1585,14 @@ document.addEventListener('change', function (e) {
 
 $('addCustomBtn').addEventListener('click', addCustomItem);
 $('saveExpenseBtn').addEventListener('click', saveExpense);
+$('amountSave').addEventListener('click', function () { if (amountSheetDone) amountSheetDone(true); });
+$('amountCancel').addEventListener('click', function () { if (amountSheetDone) amountSheetDone(false); });
+$('amountSheet').addEventListener('click', function (e) {
+  if (e.target === $('amountSheet') && amountSheetDone) amountSheetDone(false);
+});
+$('editPaymentBtn').addEventListener('click', function () {
+  if (editingOrderId) recordPaymentFor(editingOrderId);
+});
 $('submitBtn').addEventListener('click', submitOrder);
 $('retryPendingBtn').addEventListener('click', function () { flushPending(false); });
 $('customerPhone').addEventListener('input', scheduleCustomerLookup);
@@ -1424,6 +1613,9 @@ if (inTelegram()) {
 /* ============================================================
    Boot
    ============================================================ */
+applyThemeClass();
+if (tg && tg.onEvent) { try { tg.onEvent('themeChanged', applyThemeClass); } catch (e) {} }
+
 $('phonePrefix').textContent = '+' + COUNTRY_CODE;
 $('deliveryDate').value = localDate(1);
 $('deliveryTime').value = '12:30';

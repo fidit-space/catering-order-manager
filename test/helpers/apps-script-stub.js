@@ -144,6 +144,8 @@ class FakeSheet {
   appendRow(r) { this.rows.push(r.slice()); }
   getDataRange() { return this.getRange(1, 1, Math.max(this.rows.length, 1), 40); }
   getMaxRows() { return Math.max(this.rows.length, 100); }
+  getLastColumn() { return this.rows.reduce((w, r) => Math.max(w, r.length), 0); }
+  getLastRow() { return this.rows.length; }
   getRange(row, col, numRows = 1, numCols = 1) {
     const sheet = this;
     return {

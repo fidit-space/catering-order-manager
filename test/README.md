@@ -27,6 +27,7 @@ why the suite runs on every push.
 | `integrity` | The `onEdit` guard that repairs hand-edited cells, and the watchdog that pushes new Log entries to Telegram |
 | `operations` | Status pipeline, chasing unpaid balances, weekly backup, Settings tab |
 | `auth` | Telegram signature verification — forged, tampered, expired and stranger launches |
+| `migration` | Repairing a pre-finance spreadsheet, and proving money recorded before the Ledger cannot be erased |
 | `finance` | The money ledger: instalments, refunds, price-change audit trail, cost/margin, reports reconciling against the ledger |
 
 ## How it works

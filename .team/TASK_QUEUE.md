@@ -94,6 +94,50 @@ against the ledger rather than against themselves.
 
 ---
 
+## 🔴 Task 11: A-to-Z audit — 13 defects found and fixed
+- **Assignee:** Claude Code
+- **Status:** `[READY_FOR_AUDIT]`
+- **Trigger:** Umair reported four live symptoms; all four traced to real defects, plus nine more.
+
+### 🔴 Requires action in Google before it is closed
+**F13 — pre-Ledger orders could lose recorded money.** `syncOrderMoney_` recomputes `Received`
+from the Ledger alone. The live orders predate the Ledger, so their advances had no entries
+behind them: the first payment, settlement or price edit on such an order would have
+overwritten the advance and told the customer they still owed it.
+
+Two-part fix: a **guard** in `syncOrderMoney_` that refuses to zero a pre-Ledger balance and
+logs it instead, and **`migrateSheets()`** which backfills an `Opening balance` ledger entry for
+every such order. **Umair must run `migrateSheets` once** (SETUP_INSTRUCTIONS Step 4b) — the code
+alone does not repair the spreadsheet.
+
+### Fixed in code
+| # | Was |
+|---|---|
+| **F2** | No migration path. The live Menu tab has no `Cost` column, so `readMenu_` read blank and **every margin silently never appeared** — the reported "no profit figures". `migrateSheets()` now adds it, backfills costs where available, and repairs the Orders header. |
+| **F8** | `stampMessage_` fed Telegram's *plain* `message.text` back with `parse_mode: HTML`. Any `&`/`<` (e.g. "Curries & Gravy") rejected the edit with a 400 — sheet updated, message frozen, **button looked dead**. Now escaped. |
+| **F1** | `?action=health&key=` returned order counts to anyone, since the key is public in `index.html`. Counts now require a verified Telegram launch. Verified live before the fix. |
+| **F3** | Editing an order's Advance was a **silent no-op** — `updateOrder_` stopped reading the field in `ec6debb`. The edit form now shows read-only *Received* plus a real payment action. |
+| **F4** | **Instalments were unreachable.** `recordPayment_` was built, routed and tested but never called. Added a payment sheet (amount + method) on order cards and aging rows, plus `/pay`. |
+| **F9** | Advancing a status replaced the whole keyboard with one button, losing Call/WhatsApp/Map/Paid. Now rebuilt via `contactKeyboard_`. |
+| **F10** | **Telegram dark mode failed contrast** — chips and the cash-box figure at 2.29–3.24:1 against `#17212b`. Moved to theme tokens; now **8.46–9.16:1**, measured. |
+| **F11** | Category pills hid **365px** behind an invisible scroll — Curries, Desserts and Custom unreachable. Rows now wrap. |
+| **F5 / F6 / F7 / F12** | "Advance" mislabelled once payments exist; no payment method on new orders; failed expenses lost rather than queued; the sample menu shown silently as if it were the real one. |
+
+### Tests
+289 checks (was 227). New `test/migration.test.js` (35) proves an unmigrated sheet **cannot** lose
+a payment, that migration carries the money over, and that re-running changes nothing. Two brittle
+assertions found and fixed while working — a hardcoded unpaid count that other tests perturbed.
+
+### For the auditor
+- ⚠️ **Not closed until `migrateSheets` is run on production**, and the summary it returns should
+  be pasted into AUDIT_LOG as evidence.
+- 🟠 Migration marks carried-over payments as method **`Unknown`** rather than guessing Cash —
+  correct for the books, but it means today's `/cash` reconciliation excludes them.
+- ⚪ `DEFAULT_MENU` costs remain placeholders; migration deliberately does **not** seed costs into
+  an existing Menu tab. Real figures must be entered before any margin is read as truth.
+
+---
+
 ## 🚀 Active Sprint: Security Hardening & Internal Pilot
 
 ### Task 1: Fix IP Protection (Standalone Script Mode)

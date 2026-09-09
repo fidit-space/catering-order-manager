@@ -27,6 +27,14 @@ Install the **Google Sheets** app (Play Store / App Store) and open the
 
 ---
 
+## ⚠️ If you see no profit figures
+
+The Cost column is what produces them. A Menu tab created before costing existed does not have
+that column at all — ask your setup helper to run **migrateSheets** once, then fill in Cost for
+each dish. Until Cost has a number in it, the app shows no margin rather than guessing one.
+
+---
+
 ## About the Cost column
 
 `Rate` is what the customer pays. `Cost` is what that portion costs **you** — the chicken,

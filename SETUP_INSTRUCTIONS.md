@@ -78,9 +78,22 @@ show your `/exec` URL.
 
 ---
 
-## Step 5 — Set up the four automatic jobs (3 min)
+## Step 4b — Run the migration (1 min, required on an existing sheet)
 
-Click the ⏰ **Triggers** icon in the left sidebar, then **Add Trigger**, four times:
+In the Apps Script editor choose **migrateSheets** and press **Run**.
+
+The sheet helpers only write headers when they *create* a tab, so a spreadsheet that already
+holds orders never picks up a schema change. This brings it up to date and, critically,
+**gives money recorded before the Ledger existed a ledger entry to stand on** — without it,
+the first payment taken on an older order would erase the advance already paid.
+
+Read the summary it returns. Run it again and it should say *"Nothing to migrate"*.
+
+---
+
+## Step 5 — Set up the five automatic jobs (3 min)
+
+Click the ⏰ **Triggers** icon in the left sidebar, then **Add Trigger**, five times:
 
 | Function | Event source | Type | When | What it does |
 |---|---|---|---|---|
@@ -171,6 +184,7 @@ including `API_KEY` and the Web App URL. A static page cannot keep a secret.
 | Value | Secret? | Where it lives |
 |---|---|---|
 | **Bot token** | 🔴 **Yes — the only real secret** | Script Properties, nowhere else |
+| Order counts on `/health` | ⚪ Shown only to a verified Telegram launch | — |
 | Webhook secret | 🔴 Yes | Script Properties |
 | `API_KEY` | ⚪ No — public by design | `index.html`; a spam filter only |
 | Web App URL | ⚪ No — public by design | `index.html` |
@@ -209,6 +223,7 @@ Money commands on the bot:
 | `/owed` | Who owes you, grouped by how overdue they are |
 | `/month` | Revenue, costs, profit and margin for the month |
 | `/spend 4500 chicken` | Records a cost — the category is worked out from the words |
+| `/pay <order id> 20000` | Records a part payment; add `bank` or `card` if it was not cash |
 
 `/spend` accepts a trailing `bank` or `card` when it was not cash, e.g. `/spend 800 driver bank`.
 

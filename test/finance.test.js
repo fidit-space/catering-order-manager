@@ -14,8 +14,10 @@
 const stub = require('./helpers/apps-script-stub.js');
 
 module.exports = function (t) {
-  const { SS, SENT } = stub.install();
+  const { SS, SENT, PROPS } = stub.install();
   eval(stub.backendSource());
+  const owner = require('./helpers/telegram.js')
+    .launchAs(PROPS.TELEGRAM_BOT_TOKEN, PROPS.TELEGRAM_OWNER_CHAT_ID);
 
   initSheets();
 
@@ -63,6 +65,37 @@ module.exports = function (t) {
   t.check('the order reads as fully paid', findOrderRow_(staged)[COL.PAYMENT] === 'Paid');
   t.check('each payment kept its own method',
     readLedger_().filter(r => r[LED.ORDER] === staged).map(r => r[LED.METHOD]).join(',') === 'Cash,Bank,Cash');
+
+  t.section('A part payment can be recorded through the API the app uses');
+  // recordPayment_ was implemented, routed and tested, but nothing in the app
+  // or the bot ever called it — only full settlement was reachable.
+  const partial = book({ totalAmount: 40000, customerName: 'Pays In Parts' });
+  const viaApi = JSON.parse(doPost({
+    parameter: {},
+    postData: { contents: JSON.stringify({
+      action: 'recordPayment', key: PROPS.API_KEY, initData: owner,
+      orderId: partial, amount: 15000, method: 'Bank'
+    }) }
+  }).getContent());
+  t.check('the route accepts it', viaApi.status === 'success', JSON.stringify(viaApi).slice(0, 110));
+  t.check('received is just that payment', viaApi.received === 15000, String(viaApi.received));
+  t.check('the rest is still owed', viaApi.balance === 25000, String(viaApi.balance));
+  t.check('marked as part paid', viaApi.paymentStatus === 'Part paid', viaApi.paymentStatus);
+  t.check('the method was kept', readLedger_().filter(r => r[LED.ORDER] === partial)[0][LED.METHOD] === 'Bank');
+
+  t.section('/pay records a payment from the chat');
+  SENT.length = 0;
+  handlePayCommand_('/pay ' + partial + ' 25000 cash', 'tester');
+  t.check('it confirms the amount', SENT.some(m => /25,000/.test(m.payload.text || '')));
+  t.check('and says it is now settled', SENT.some(m => /Paid in full/i.test(m.payload.text || '')));
+  t.check('the order really is settled', orderReceived_(partial) === 40000, String(orderReceived_(partial)));
+  SENT.length = 0;
+  handlePayCommand_('/pay nonsense', 'tester');
+  t.check('a malformed command explains itself', SENT.some(m => /How to record a payment/i.test(m.payload.text || '')));
+  SENT.length = 0;
+  handlePayCommand_('/pay ORD-DOES-NOT-EXIST 500', 'tester');
+  t.check('an unknown order is reported, not silently dropped',
+    SENT.some(m => /not found/i.test(m.payload.text || '')), JSON.stringify(SENT[0] && SENT[0].payload.text));
 
   t.section('Cancelling never quietly keeps the customer’s money');
   const cancelled = book({ advancePaid: 15000, customerName: 'Changed Mind' });

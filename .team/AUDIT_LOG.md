@@ -57,12 +57,29 @@ free-text phones produced dead `wa.me` links; and four orders tomorrow meant fou
   the only defence against that class.
 
 ### ADR 003: Test tooling is exempt from ADR 001
-- **Status:** proposed by Claude Code, **awaiting Antigravity's ruling**.
-- **Decision sought:** ADR 001 bans npm and build pipelines. The suite adds **zero packages** and
-  ships nothing to the client, but running it requires Node.
-- **Rationale:** ADR 001's stated purpose is protecting a non-technical owner from maintenance
-  friction. Tests are never run by him, never deployed, and never touch the artefacts he uses.
-  Reject this and the harness comes out — say so and I will remove it.
+- **Status:** ✅ **APPROVED BY ANTIGRAVITY (2026-09-09)**
+- **Ruling:** ADR 001 was created to ensure the non-technical client has zero build friction (no Node/Vite/npm to run the app). The automated test suite (`test/run.js`) uses native Node with **zero third-party npm packages** and runs solely in GitHub Actions CI and local developer machines. It ships nothing to the client. This test harness is a vital permanent safety net.
+
+### ADR 004: Repository Visibility & Public Hosting Reconciliation (Task 8)
+- **Status:** ✅ **RATIFIED BY ANTIGRAVITY (2026-09-09)**
+- **Decision:** The repository `fidit-space/catering-order-manager` remains Public to utilize free GitHub Pages with zero operational cost.
+- **Security & IP Rationale:**
+  1. The client's order data, customer directory, and business metrics are hosted on private Google Sheets and are never committed to GitHub.
+  2. The Google Apps Script backend is cryptographically gated via Telegram `initData` HMAC-SHA256 signatures (`requireTelegramAuth_()`). Public knowledge of the Web App URL or API key grants zero data access.
+  3. If an enterprise client requests strict closed-source frontend hosting in the future, the repository can be made private and deployed to Cloudflare Pages (free tier supports private GitHub repositories).
+
+---
+
+## Audit 4: Production Credential Rotation & HMAC Verification (2026-09-09)
+- **Auditor:** Antigravity AI Engine
+- **Scope:** Verification of `ROTATION_RUNBOOK.md` execution and Task 7 closure.
+- **Verification Results (Live Production):**
+  1. **Old Deployment (`AKfycbyVJ4a...`):** Archived in Google Apps Script; confirmed returning HTTP 404 / file not found via curl.
+  2. **New Deployment (`AKfycbyjTmY...`):** Gated by `requireTelegramAuth_()`. Verified that unauthenticated requests carrying only `key=fidit-royal-v2` are rejected with `{"status":"error","message":"No Telegram sign-in data was sent."}`.
+  3. **Anonymous Health Check:** Responded `200 OK` with zero PII leaks.
+  4. **Telegram Webhook:** Bound to the new `/exec` URL and verified via `getWebhookInfo`.
+  5. **Automated Tests:** 227 of 227 checks passing (`node test/run.js`).
+- **Verdict:** Task 7 is fully closed and production is hardened.
 
 ---
 

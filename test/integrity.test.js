@@ -76,6 +76,22 @@ module.exports = function (t) {
   t.check('date restored to text', orders.rows[1][COL.DATE] === '2026-09-12', String(orders.rows[1][COL.DATE]));
   t.check('phone restored', orders.rows[1][COL.PHONE] === '94712223344', String(orders.rows[1][COL.PHONE]));
 
+  t.section('Button presses cannot be killed by an ampersand');
+  // query.message.text is Telegram's PLAIN text. Sending it back as HTML made
+  // any & or < reject the edit with a 400: sheet updated, message frozen,
+  // button apparently dead.
+  SENT.length = 0;
+  stampMessage_({
+    message: { chat: { id: 1 }, message_id: 9, text: 'Order for Curries & Gravy <VIP> — 60 Pax' }
+  }, '🍳 COOKING');
+  const edit = SENT.find(m => m.method === 'editMessageText');
+  t.check('the edit is sent', !!edit);
+  t.check('the ampersand is escaped', /Curries &amp; Gravy/.test(edit.payload.text), edit.payload.text);
+  t.check('the angle brackets are escaped', /&lt;VIP&gt;/.test(edit.payload.text));
+  t.check('no raw & survives to break the parse',
+    !/&(?!amp;|lt;|gt;)/.test(edit.payload.text), edit.payload.text);
+  t.check('the outcome label is still shown', /COOKING/.test(edit.payload.text));
+
   t.section('New errors are pushed to Telegram, not left in a tab nobody reads');
   SENT.length = 0;
   logError_('someJob', new Error('kaboom'));

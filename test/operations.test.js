@@ -129,9 +129,44 @@ module.exports = function (t) {
   t.check('no pipeline button once delivered', !kbDone.includes('adv_'));
   t.check('no payment button when nothing owed', !kbDone.includes('paid_'));
 
+  t.section('Advancing a status keeps the whole keyboard');
+  // Replacing it with just the next-step button threw away Call, WhatsApp,
+  // Map and Mark-paid — the buttons wanted at a customer's door.
+  const kbOrder = saveOrder_({
+    itemsJson: [{ name: 'Chicken Dum Biryani', unit: 'Pax', qty: 20, rate: 950 }],
+    itemsSummary: 'Chicken Dum Biryani: 20 Pax',
+    deliveryDate: '2026-09-12', deliveryTime: '13:00',
+    customerName: 'Keyboard Test', customerPhone: '0771239999',
+    deliveryAddress: 'Dehiwala', totalAmount: 19000, advancePaid: 0
+  }).orderId;
+  SENT.length = 0;
+  handleCallbackQuery_({
+    id: 'cb1', data: 'adv_' + kbOrder, from: { id: 111, username: 'owner' },
+    message: { chat: { id: 111 }, message_id: 5, text: 'Order for Curries & Gravy' }
+  });
+  const markup = SENT.find(m => m.method === 'editMessageReplyMarkup');
+  t.check('the keyboard is rebuilt', !!markup);
+  const kbText = JSON.stringify(markup.payload.reply_markup);
+  t.check('Call survives', /tel:/.test(kbText), kbText.slice(0, 120));
+  t.check('WhatsApp survives', /wa\.me/.test(kbText));
+  t.check('Maps survives', /maps\/search/.test(kbText));
+  t.check('the next step is offered', /adv_/.test(kbText));
+  const stamped = SENT.find(m => m.method === 'editMessageText');
+  t.check('and the ampersand did not break the stamp', /&amp;/.test(stamped.payload.text), stamped.payload.text);
+
   t.section('New API routes');
-  t.check('unpaid route returns outstanding orders', readUnpaid_().length === 2, String(readUnpaid_().length));
-  t.check('sorted biggest debt first', readUnpaid_()[0].balanceDue >= readUnpaid_()[1].balanceDue);
+  // Asserted by identity, not by count: other checks in this suite book orders
+  // of their own, so a hardcoded number goes stale the moment one is added.
+  const unpaid = readUnpaid_();
+  t.check('every order returned actually owes money', unpaid.every(o => o.balanceDue > 0),
+    unpaid.map(o => o.balanceDue).join(','));
+  t.check('the known debtors are present',
+    unpaid.some(o => o.customerName === 'Slow Payer') && unpaid.some(o => o.customerName === 'Just Delivered'),
+    unpaid.map(o => o.customerName).join(','));
+  t.check('settled orders are excluded', !unpaid.some(o => o.customerName === 'Rizwan'));
+  t.check('sorted biggest debt first',
+    unpaid.every((o, i) => i === 0 || unpaid[i - 1].balanceDue >= o.balanceDue),
+    unpaid.map(o => o.balanceDue).join(','));
   // Routes now require a signed Telegram launch, not just the (public) key.
   const owner = telegram.launchAs(PROPS.TELEGRAM_BOT_TOKEN, PROPS.TELEGRAM_OWNER_CHAT_ID);
   const menuRes = JSON.parse(doGet({ parameter: { action: 'menu', key: 'testkey', initData: owner } }).getContent());

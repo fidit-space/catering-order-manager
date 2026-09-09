@@ -184,7 +184,9 @@ function initSheets() {
   menuSheet_();
   settingsSheet_();
   ledgerSheet_();
-  return 'Sheets ready.';
+  // Creating tabs is not enough on a spreadsheet that already has data — the
+  // schema has changed since the first release.
+  return 'Sheets ready. ' + migrateSheets_();
 }
 
 /** STEP 3 — Run AFTER deploying as a Web App. Enables the Telegram buttons. */
@@ -523,7 +525,7 @@ function doGet(e) {
     }
 
     switch (action) {
-      case 'health':   return json_(health_(p.key));
+      case 'health':   return json_(health_(p.key, p.initData));
       case 'menu':     return json_({ status: 'ok', menu: readMenu_(), statusFlow: STATUS_FLOW, statusIcons: STATUS_ICON });
       case 'unpaid':   return json_({ status: 'ok', orders: readUnpaid_() });
       case 'money':    return json_({
@@ -545,13 +547,20 @@ function doGet(e) {
   }
 }
 
-function health_(key) {
+/**
+ * Liveness for anyone; business figures only for a verified Telegram launch.
+ *
+ * API_KEY is published inside index.html, so gating the counts on it gated
+ * them on nothing — order and customer totals were readable by anyone who
+ * viewed source.
+ */
+function health_(key, initData) {
   var out = { status: 'ok', timestamp: nowStr_(), timezone: TZ };
   try {
     requireKey_(key);
+    requireTelegramAuth_(initData, 'health');
   } catch (e) {
-    // Health check without a key still confirms the deployment is reachable.
-    out.detail = 'Deployment is live. Pass &key=... to see order counts.';
+    out.detail = 'Deployment is live. Open the app from Telegram to see order counts.';
     return out;
   }
   var rows = ordersSheet_().getDataRange().getValues().slice(1);
@@ -1132,6 +1141,152 @@ function buildPrepDigest_(dateStr) {
   return { message: msg, rowNumbers: rowNumbers, orderCount: orders.length };
 }
 
+// ==================== MIGRATION ====================
+
+/*
+ * WHY THIS EXISTS
+ *
+ * The sheet helpers below only write headers when they CREATE a tab. That was
+ * fine while the schema never changed. The finance release added a Cost column
+ * to Menu, two columns to Orders, renamed "Advance Paid" to "Received", and
+ * made the Ledger the source of truth for money — none of which reached a
+ * spreadsheet that already existed.
+ *
+ * Consequences seen in production: every margin silently blank, because
+ * readMenu_ found no Cost column; and money recorded before the Ledger with
+ * no entries to back it, one payment away from being erased.
+ *
+ * Run this once after deploying. It is idempotent — running it twice reports
+ * nothing to do the second time.
+ */
+function migrateSheets_() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var changes = [];
+
+    changes = changes.concat(migrateOrderHeaders_());
+    changes = changes.concat(migrateMenuColumns_());
+    changes = changes.concat(backfillOpeningBalances_());
+    changes = changes.concat(backfillOrderCosts_());
+
+    settingsSheet_();
+    ledgerSheet_();
+    logSheet_();
+
+    if (!changes.length) return 'Nothing to migrate — the spreadsheet is already current.';
+    return 'Migrated:\n• ' + changes.join('\n• ');
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Public entry point, so it can be run from the Apps Script editor. */
+function migrateSheets() {
+  var summary = migrateSheets_();
+  Logger.log(summary);
+  return summary;
+}
+
+/** Brings the Orders header row up to the current schema. */
+function migrateOrderHeaders_() {
+  var sheet = ordersSheet_();
+  var width = Math.max(sheet.getLastColumn(), ORDER_HEADERS.length);
+  var current = sheet.getRange(1, 1, 1, width).getValues()[0];
+
+  var same = ORDER_HEADERS.every(function (h, i) { return current[i] === h; });
+  if (same) return [];
+
+  var renamed = current[COL.ADVANCE] && current[COL.ADVANCE] !== ORDER_HEADERS[COL.ADVANCE]
+    ? ' ("' + current[COL.ADVANCE] + '" is now "' + ORDER_HEADERS[COL.ADVANCE] + '")' : '';
+
+  sheet.getRange(1, 1, 1, ORDER_HEADERS.length).setValues([ORDER_HEADERS]);
+  sheet.getRange(1, 1, 1, ORDER_HEADERS.length).setFontWeight('bold').setBackground('#e2e8f0');
+  return ['Orders headers updated to ' + ORDER_HEADERS.length + ' columns' + renamed];
+}
+
+/** Adds the Cost column to a Menu tab created before costing existed. */
+function migrateMenuColumns_() {
+  var sheet = menuSheet_();
+  var width = Math.max(sheet.getLastColumn(), MENU_HEADERS.length);
+  var current = sheet.getRange(1, 1, 1, width).getValues()[0];
+
+  if (current[6] === 'Cost') return [];
+
+  sheet.getRange(1, 1, 1, MENU_HEADERS.length).setValues([MENU_HEADERS]);
+  sheet.getRange(1, 1, 1, MENU_HEADERS.length).setFontWeight('bold').setBackground('#fde68a');
+
+  // Deliberately left blank rather than seeded. A guessed cost shown as fact is
+  // worse than no margin at all — see MENU_GUIDE.md.
+  return ['Menu gained a Cost column — fill it in to see profit per order (MENU_GUIDE.md)'];
+}
+
+/**
+ * THE IMPORTANT ONE. Gives pre-Ledger money a ledger entry to stand on, so
+ * recomputing an order's balance can never erase a payment the customer made.
+ */
+function backfillOpeningBalances_() {
+  var sheet = ordersSheet_();
+  var data = sheet.getDataRange().getValues();
+  var ledger = readLedger_();
+  var backfilled = 0;
+  var total = 0;
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var orderId = row[COL.ID];
+    if (!orderId) continue;
+
+    var recorded = num_(row[COL.ADVANCE]);
+    if (recorded <= 0) continue;
+    if (ledgerHasOrder_(orderId, ledger)) continue;
+
+    addLedgerEntry_({
+      type: 'Payment In',
+      orderId: orderId,
+      category: 'Opening balance',
+      description: row[COL.NAME],
+      amount: recorded,
+      method: 'Unknown',
+      by: 'migration',
+      note: 'Recorded before the Ledger existed; carried over on ' + nowStr_() +
+            '. Payment method was not captured at the time.'
+    });
+    backfilled++;
+    total += recorded;
+  }
+
+  if (!backfilled) return [];
+  return [backfilled + ' order(s) carrying ' + CURRENCY + ' ' + fmtMoney_(total) +
+          ' given opening-balance ledger entries'];
+}
+
+/** Fills in cost and margin for existing orders, where the Menu has costs. */
+function backfillOrderCosts_() {
+  var sheet = ordersSheet_();
+  var data = sheet.getDataRange().getValues();
+  var filled = 0;
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (!row[COL.ID]) continue;
+    if (row[COL.COST] !== '' && row[COL.COST] !== undefined && row[COL.COST] !== null) continue;
+
+    var items = [];
+    try { items = row[COL.ITEMS_JSON] ? JSON.parse(row[COL.ITEMS_JSON]) : []; } catch (e) { continue; }
+
+    var cost = estimateFoodCost_(items);
+    if (cost === null) continue;   // no costs on the Menu yet — leave blank, do not guess
+
+    sheet.getRange(i + 1, COL.COST + 1).setValue(cost);
+    sheet.getRange(i + 1, COL.MARGIN + 1).setValue(num_(row[COL.TOTAL]) - cost);
+    filled++;
+  }
+
+  if (!filled) return [];
+  return [filled + ' existing order(s) given an estimated cost and margin'];
+}
+
 // ==================== THE LEDGER ====================
 
 /*
@@ -1187,6 +1342,15 @@ function readLedger_() {
 }
 
 /** Net received against one order: payments in, less refunds out. */
+/** True when the ledger holds any row at all for this order. */
+function ledgerHasOrder_(orderId, rows) {
+  rows = rows || readLedger_();
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i][LED.ORDER] === orderId) return true;
+  }
+  return false;
+}
+
 function orderReceived_(orderId, rows) {
   rows = rows || readLedger_();
   var total = 0;
@@ -1212,6 +1376,22 @@ function syncOrderMoney_(orderId) {
 
     var total = num_(data[i][COL.TOTAL]);
     var received = orderReceived_(orderId, ledger);
+    var previous = num_(data[i][COL.ADVANCE]);
+
+    // SAFETY NET. Orders booked before the Ledger existed carry money in the
+    // Received column with no matching ledger rows. Recomputing from an empty
+    // ledger would wipe it and tell the customer they still owe. Refuse, and
+    // say so loudly, rather than destroying a payment record.
+    if (previous > 0 && received === 0 && !ledgerHasOrder_(orderId, ledger)) {
+      logError_('syncOrderMoney_', new Error(
+        'Refused to zero ' + CURRENCY + ' ' + fmtMoney_(previous) + ' on ' + orderId +
+        ' — it predates the Ledger and has no entries. Run migrateSheets_() to backfill it.'));
+      return {
+        orderId: orderId, total: total, received: previous, balance: total - previous,
+        paymentStatus: data[i][COL.PAYMENT], skipped: 'needs migration'
+      };
+    }
+
     var balance = total - received;
     var status = received <= 0 ? 'Unpaid' : (balance > 0 ? 'Part paid' : (balance < 0 ? 'Overpaid' : 'Paid'));
 
@@ -1575,7 +1755,7 @@ function sendCashReport_(dateStr) {
   msg += '━━━━━━━━━━━━━━━━━━━━━\n';
 
   if (!m.entries) {
-    msg += '\nNo money recorded today.\n\nUse <code>/spend 4500 chicken</code> to log a cost,\nor tap 💵 on an order to record a payment.';
+    msg += '\nNo money recorded today.\n\nUse <code>/spend 4500 chicken</code> to log a cost,\nor <code>/pay &lt;order id&gt; 20000</code> to record a payment.';
     sendTelegram_(ownerChat_(), msg);
     return;
   }
@@ -1671,6 +1851,47 @@ function sendAgingReport_() {
   });
 
   sendTelegram_(ownerChat_(), msg, keyboard.length ? { inline_keyboard: keyboard } : null);
+}
+
+/**
+ * Parses "/pay ORD-260909-123456-AB1C 20000" or "/pay ORD-... 20000 bank".
+ * Records a part payment without opening the app — the counterpart to /spend.
+ */
+function handlePayCommand_(text, by) {
+  var body = String(text).replace(/^\/pay\s*/i, '').trim();
+  var match = body.match(/^(\S+)\s+([0-9][0-9,.]*)\s*(\w+)?$/);
+
+  if (!match) {
+    sendTelegram_(ownerChat_(),
+      '💵 <b>How to record a payment</b>\n\n' +
+      '<code>/pay ORD-260909-143000-A1B 20000</code>\n' +
+      '<code>/pay ORD-260909-143000-A1B 20000 bank</code>\n\n' +
+      'The order id is on the booking message. Send /owed to see who still owes you.');
+    return;
+  }
+
+  var orderId = match[1];
+  var amount = num_(match[2]);
+  var method = match[3] ? match[3].charAt(0).toUpperCase() + match[3].slice(1).toLowerCase() : 'Cash';
+  if (method === 'Transfer') method = 'Bank';
+
+  if (amount <= 0) {
+    sendTelegram_(ownerChat_(), '⚠️ Enter an amount greater than zero.');
+    return;
+  }
+
+  try {
+    var name = findOrderRow_(orderId) ? findOrderRow_(orderId)[COL.NAME] : orderId;
+    var result = recordPayment_(orderId, amount, method, by, 'Recorded via /pay');
+    var msg = '✅ Recorded <b>' + CURRENCY + ' ' + fmtMoney_(amount) + '</b> from ' + esc_(name) +
+      '\n<i>' + esc_(method) + '</i>\n\n';
+    msg += result.balance > 0
+      ? '⚠️ Still owed: <b>' + CURRENCY + ' ' + fmtMoney_(result.balance) + '</b>'
+      : '🎉 <b>Paid in full.</b>';
+    sendTelegram_(ownerChat_(), msg);
+  } catch (err) {
+    sendTelegram_(ownerChat_(), '⚠️ ' + esc_(err.message) + '\n\nSend /owed to see the order ids.');
+  }
 }
 
 /**
@@ -1812,14 +2033,19 @@ function handleCallbackQuery_(query) {
       answer = (STATUS_ICON[moved.newStatus] || '') + ' Now: ' + moved.newStatus;
       stampMessage_(query, (STATUS_ICON[moved.newStatus] || '') + ' ' + moved.newStatus.toUpperCase());
 
-      // Keep the pipeline moving without making him reopen the app.
-      var nextLabel = STATUS_ACTION[moved.newStatus];
-      if (nextLabel && query.message) {
-        telegramApi_('editMessageReplyMarkup', {
-          chat_id: query.message.chat.id,
-          message_id: query.message.message_id,
-          reply_markup: { inline_keyboard: [[{ text: nextLabel, callback_data: 'adv_' + advId }]] }
-        });
+      // Rebuild the FULL keyboard for the new status. Replacing it with just
+      // the next step threw away Call, WhatsApp, Map and Mark-paid — exactly
+      // the buttons wanted while standing at a customer's door.
+      if (query.message) {
+        var advRow = findOrderRow_(advId);
+        if (advRow) {
+          telegramApi_('editMessageReplyMarkup', {
+            chat_id: query.message.chat.id,
+            message_id: query.message.message_id,
+            reply_markup: contactKeyboard_(advId, String(advRow[COL.PHONE]), advRow[COL.ADDRESS],
+                                           moved.newStatus, advRow[COL.BALANCE])
+          });
+        }
       }
 
     } else if (data.indexOf('paid_') === 0) {
@@ -1868,12 +2094,23 @@ function handleCallbackQuery_(query) {
 
 /** Appends an outcome line to the message a button was pressed on, so the
  *  chat history never contradicts the sheet. */
+/**
+ * Appends an outcome line to the message a button was pressed on.
+ *
+ * query.message.text is Telegram's PLAIN text — entities already rendered and
+ * stripped. Sending it straight back with parse_mode HTML meant any "&", "<"
+ * or ">" in it (an item called "Curries & Gravy", a note, a customer name)
+ * made Telegram reject the edit with a 400. The sheet updated, the message did
+ * not, and the button looked dead. Escaping it makes the edit always valid;
+ * the bold is already gone either way, so the label carries the emphasis.
+ */
 function stampMessage_(query, label) {
   if (!query.message) return;
+  var body = esc_(query.message.text || '');
   telegramApi_('editMessageText', {
     chat_id: query.message.chat.id,
     message_id: query.message.message_id,
-    text: (query.message.text || '') + '\n\n' + label + ' — ' + nowStr_(),
+    text: body + '\n\n<b>' + esc_(label) + '</b> — ' + esc_(nowStr_()),
     parse_mode: 'HTML',
     disable_web_page_preview: true
   });
@@ -1905,6 +2142,7 @@ function handleBotMessage_(message) {
   if (text === '/cash') return sendCashReport_();
   if (text === '/month') return sendMonthReport_();
   if (text.indexOf('/spend') === 0) return handleSpendCommand_(message.text, describeUser_(message.from));
+  if (text.indexOf('/pay') === 0) return handlePayCommand_(message.text, describeUser_(message.from));
 
   sendTelegram_(chatId,
     '👋 <b>Catering Assistant</b>\n\n' +

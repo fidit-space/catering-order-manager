@@ -67,7 +67,7 @@ flowchart TD
 | `backend/google_apps_script.js` | The serverless backend, pasted into Apps Script |
 | `SETUP_INSTRUCTIONS.md` | One-time setup, step by step |
 | `MENU_GUIDE.md` | How the owner changes dishes and prices himself |
-| `test/` | 227 checks, run with `node test/run.js` — no dependencies |
+| `test/` | 289 checks, run with `node test/run.js` — no dependencies |
 | `.github/workflows/tests.yml` | Runs those checks on every push |
 | `CLAUDE_CODE_SPEC.md` | The original build specification |
 | `Catering Order Management Solutions.md` | The research that led to this architecture |
@@ -84,6 +84,9 @@ the quantities are confirmed in writing.
 **Seeing the day** — the **📅 Orders** tab lists Today / Tomorrow / Upcoming / Unpaid with
 the money still to collect. Each order shows its stage and one button for the next step:
 Confirm → Start cooking → Out for delivery → Delivered. Or just send `/today` to the bot.
+
+**Taking payment** — tap **💵 Payment** on an order for a part payment (amount and method), or
+**✔ Paid in full** to settle in one tap. From the bot: `/pay <order id> 20000`.
 
 **Money** — the **💰 Money** tab shows today's takings, what the cash box should physically
 hold, a one-line cost entry, this month's profit and margin, and who owes you grouped by how
@@ -136,7 +139,7 @@ and key can reach nothing. Details in `SETUP_INSTRUCTIONS.md`.
 node test/run.js
 ```
 
-227 checks, no `npm install`, no build step. They run on every push via GitHub
+289 checks, no `npm install`, no build step. They run on every push via GitHub
 Actions. See [`test/README.md`](test/README.md) for what each suite covers and why.
 
 Two safeguards worth knowing about:

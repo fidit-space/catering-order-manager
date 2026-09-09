@@ -101,6 +101,18 @@ module.exports = function (t) {
   t.check('anonymous health check works', health.status === 'ok');
   t.check('but reveals no order counts', health.totalOrders === undefined);
 
+  // API_KEY is published in index.html, so gating counts on it gated them on
+  // nothing — order totals were readable by anyone who viewed source.
+  const keyed = JSON.parse(doGet({ parameter: { action: 'health', key: publicKey } }).getContent());
+  t.check('the published key alone still reveals no counts', keyed.totalOrders === undefined,
+    JSON.stringify(keyed));
+  t.check('nor whether a webhook is configured', keyed.webhookConfigured === undefined);
+  t.check('it says how to see them instead', /Telegram/.test(String(keyed.detail)), String(keyed.detail));
+
+  const authed = JSON.parse(doGet({ parameter: { action: 'health', key: publicKey, initData: launch() } }).getContent());
+  t.check('a verified Telegram launch does see the counts', typeof authed.totalOrders === 'number',
+    JSON.stringify(authed));
+
   t.section('The browser escape hatch is read-only and off by default');
   PROPS.ALLOW_BROWSER_ACCESS = 'YES';
   t.check('reads are permitted when switched on', requireTelegramAuth_('', 'orders') === null);
