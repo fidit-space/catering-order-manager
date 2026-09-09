@@ -239,8 +239,18 @@ function registerWebhook() {
   // A script property wins, so the URL can be changed without touching code.
   // Then the DEPLOYMENT_URL constant at the top of this file. getUrl() is the
   // last resort because it reports the unusable "/dev" URL in this project.
+  //
+  // A property that is not a usable URL is SKIPPED rather than obeyed. One was
+  // saved as just "/exec" by a half-completed paste, and because the property
+  // outranked everything it kept overriding a perfectly good default and the
+  // bot stayed down. Bad configuration must not beat working configuration.
   var pinned = String(props_().getProperty('DEPLOYMENT_URL') || '').trim();
-  if (pinned) return registerWebhookAt(pinned);
+  if (pinned && isDeploymentUrl_(pinned)) return registerWebhookAt(pinned);
+  if (pinned) {
+    logError_('registerWebhook', new Error(
+      'Ignoring the DEPLOYMENT_URL script property: "' + pinned + '" is not a /exec URL. ' +
+      'Delete that property, or set it to the full deployment address.'));
+  }
   if (DEPLOYMENT_URL) return registerWebhookAt(DEPLOYMENT_URL);
 
   var url = ScriptApp.getService().getUrl();
@@ -264,15 +274,22 @@ function registerWebhook() {
  * Use this when registerWebhook() picks up the wrong URL, or after creating a
  * new deployment when you already have the URL in front of you.
  */
+/** Tolerates what a phone paste produces: whitespace, a trailing slash, a query string. */
+function tidyUrl_(url) {
+  return String(url || '').replace(/\s+/g, '').split('?')[0].replace(/\/+$/, '');
+}
+
+function isDeploymentUrl_(url) {
+  return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(tidyUrl_(url));
+}
+
 function registerWebhookAt(url) {
-  // Tolerate what a phone paste actually produces: stray whitespace, newlines,
-  // a trailing slash, or a copied "?..." query string.
-  var clean = String(url || '').replace(/\s+/g, '').split('?')[0].replace(/\/+$/, '');
-  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(clean)) {
+  var clean = tidyUrl_(url);
+  if (!isDeploymentUrl_(clean)) {
     throw new Error('Not a deployment URL — got "' + clean + '". It must be the whole ' +
       'address, starting with https://script.google.com/macros/s/ and ending in /exec. ' +
-      'Easiest fix: open setDeploymentUrl() near the top of this file, paste the URL ' +
-      'between the quotes, and run it.');
+      'If a DEPLOYMENT_URL script property is set, delete it (Project Settings > Script ' +
+      'Properties) — the correct URL already ships in this file.');
   }
 
   var res = telegramApi_('setWebhook', {
@@ -360,6 +377,12 @@ function diagnose() {
   add('');
   add('WEBHOOK');
   var deployed = String(props_().getProperty('DEPLOYMENT_URL') || '').trim();
+  if (deployed && !isDeploymentUrl_(deployed)) {
+    add('  FAIL    the DEPLOYMENT_URL script property holds "' + deployed + '",');
+    add('          which is not a /exec URL. It is being ignored. Delete it in');
+    add('          Project Settings > Script Properties.');
+    deployed = '';
+  }
   if (deployed) {
     add('  Target:      ' + deployed + '  (DEPLOYMENT_URL property)');
   } else if (DEPLOYMENT_URL) {

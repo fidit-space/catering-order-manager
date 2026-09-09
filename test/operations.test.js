@@ -370,7 +370,8 @@ module.exports = function (t) {
   try { registerWebhookAt('/exec'); } catch (e) { partial = e.message; }
   t.check('a half-pasted URL is quoted back',
     partial.includes('got "/exec"'), partial);
-  t.check('and the error names the fix', partial.includes('setDeploymentUrl'), partial);
+  t.check('and the error names the fix',
+    partial.includes('Script Properties') && partial.includes('ships in this file'), partial);
 
   const good = 'https://script.google.com/macros/s/PASTED/exec';
   SENT.length = 0;
@@ -400,6 +401,21 @@ module.exports = function (t) {
   t.check('with no property set, registerWebhook uses the constant',
     SENT.find(m => m.method === 'setWebhook').payload.url.indexOf(DEPLOYMENT_URL) === 0,
     SENT.find(m => m.method === 'setWebhook').payload.url);
+
+  // A half-completed paste left DEPLOYMENT_URL holding "/exec". Because the
+  // property outranked everything, it kept overriding a perfectly good default
+  // and the bot stayed down through two more attempts to fix it.
+  PROPS.DEPLOYMENT_URL = '/exec';
+  SENT.length = 0;
+  registerWebhook();
+  t.check('a malformed property is ignored, not obeyed',
+    SENT.find(m => m.method === 'setWebhook').payload.url.indexOf(DEPLOYMENT_URL) === 0,
+    SENT.find(m => m.method === 'setWebhook').payload.url);
+  t.check('and the reason is written to the Log tab',
+    SS.getSheetByName('Log').rows.some(r => String(r[2]).includes('Ignoring the DEPLOYMENT_URL')));
+  t.check('diagnose calls the bad property out',
+    /FAIL\s+the DEPLOYMENT_URL script property holds "\/exec"/.test(diagnose()));
+  delete PROPS.DEPLOYMENT_URL;
 
   t.section('diagnose() answers "is it wired up?"');
   SENT.length = 0;
