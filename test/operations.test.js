@@ -334,7 +334,22 @@ module.exports = function (t) {
   let devError = '';
   try { registerWebhook(); } catch (e) { devError = e.message; }
   t.check('it refuses the /dev head URL, which Telegram can never reach',
-    devError.includes('head') || devError.includes('/dev'), devError || 'no error thrown');
+    devError.includes('/dev'), devError || 'no error thrown');
+  t.check('and the error explains the 401, not just the refusal',
+    devError.includes('401') && devError.includes('DEPLOYMENT_URL'), devError);
+
+  // The Run button cannot pass an argument, so the real deployment is named
+  // once in Script Properties. This is the live project's only usable path:
+  // getUrl() there reports /dev no matter what is deployed.
+  PROPS.DEPLOYMENT_URL = 'https://script.google.com/macros/s/PINNED/exec';
+  SENT.length = 0;
+  registerWebhook();
+  const pinnedHook = SENT.find(m => m.method === 'setWebhook');
+  t.check('DEPLOYMENT_URL overrides the /dev URL the editor reports',
+    pinnedHook.payload.url.indexOf('https://script.google.com/macros/s/PINNED/exec') === 0,
+    pinnedHook.payload.url);
+  t.check('diagnose says the pin is in force', diagnose().includes('DEPLOYMENT_URL property is set'));
+  delete PROPS.DEPLOYMENT_URL;
   global.SCRIPT_URL = realUrl;
 
   let badError = '';

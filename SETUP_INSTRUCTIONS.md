@@ -90,8 +90,18 @@ Read the summary it prints — it names the URL it registered. Then verify with
 **getWebhookInfo**: the log should show that same `/exec` URL, `pending_update_count: 0` and
 no `last_error_message`.
 
-If it refuses because it found a `/dev` URL, copy the `/exec` URL from **Manage deployments**
-and run `registerWebhookAt("<that url>")` instead.
+**If it refuses because it found a `/dev` URL** — which is what this project's editor reports —
+name the real deployment once and it will never ask again:
+
+1. **Deploy → Manage deployments**, copy the `/exec` URL of the active entry
+2. **⚙️ Project Settings → Script Properties → Add script property**
+   - Property: `DEPLOYMENT_URL`
+   - Value: that `/exec` URL
+3. Run **`registerWebhook`** again
+
+The `/dev` URL demands a Google login, so Telegram is served a login page, gets **401**, and
+drops every update — the bot answers nothing at all and no error appears anywhere. This is why
+the URL is checked rather than trusted.
 
 ---
 
@@ -122,6 +132,21 @@ silently before:
 - **Recent errors** — the last five rows of the Log tab
 
 Run this first whenever something looks wrong. It is faster than guessing.
+
+### If the Mini App says "Sign-in data failed verification"
+
+The launch signature is checked against `TELEGRAM_BOT_TOKEN`. A token can be perfectly valid —
+every bot message still works — and yet belong to a **different bot** from the one the app was
+opened from, in which case every sign-in fails and nothing else looks wrong.
+
+1. Run **`debugAuthOn`**
+2. Open the Mini App from the bot once (it will fail again — that is the point)
+3. Run **`explainAuthFailure`**
+4. Run **`debugAuthOff`** when you are done
+
+It tests the captured launch against every valid form of the check and tells you whether the
+algorithm or the token is at fault. It prints field names, the bot id and your user id —
+never a token.
 
 ---
 

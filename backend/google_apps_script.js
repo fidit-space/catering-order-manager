@@ -221,16 +221,24 @@ function initSheets() {
  * only visible symptom was that nothing replied.
  */
 function registerWebhook() {
+  // Script Properties first. ScriptApp.getService().getUrl() reports the "/dev"
+  // head URL in many projects, and the Run button cannot pass an argument, so
+  // DEPLOYMENT_URL is how the owner names the real deployment once and never
+  // has to think about it again.
+  var pinned = String(props_().getProperty('DEPLOYMENT_URL') || '').trim();
+  if (pinned) return registerWebhookAt(pinned);
+
   var url = ScriptApp.getService().getUrl();
   if (!url) throw new Error('Deploy this script as a Web App first (Deploy > New deployment > Web app).');
 
-  // The head deployment ("/dev") is only reachable by the owner while signed
-  // in, so Telegram can never POST to it. Registering it yields a bot that is
-  // silently dead, which is the worst possible failure mode here.
+  // The head deployment ("/dev") demands a Google login, so Telegram gets a
+  // 401 and drops every update. The bot goes silent with nothing to show for
+  // it — which is exactly what happened on 2026-09-09.
   if (url.indexOf('/exec') === -1) {
-    throw new Error('Refusing to register "' + url + '" — that is the head (/dev) URL, not a ' +
-      'deployment. Open Deploy > Manage deployments, copy the /exec URL of the active entry, ' +
-      'and run registerWebhookAt("<that url>") instead.');
+    throw new Error('Refusing to register "' + url + '" — that is the head (/dev) URL, which ' +
+      'Telegram cannot reach (it answers 401). Fix: Deploy > Manage deployments, copy the ' +
+      '/exec URL, then Project Settings > Script Properties > add DEPLOYMENT_URL with that ' +
+      'value, and run registerWebhook again.');
   }
   return registerWebhookAt(url);
 }
@@ -332,8 +340,12 @@ function diagnose() {
   // --- Webhook: the thing that was broken. ---
   add('');
   add('WEBHOOK');
-  var deployed = '';
-  try { deployed = ScriptApp.getService().getUrl() || ''; } catch (e) { deployed = ''; }
+  var deployed = String(props_().getProperty('DEPLOYMENT_URL') || '').trim();
+  if (deployed) {
+    add('  DEPLOYMENT_URL property is set, and registerWebhook will use it.');
+  } else {
+    try { deployed = ScriptApp.getService().getUrl() || ''; } catch (e) { deployed = ''; }
+  }
   var info = telegramApi_('getWebhookInfo', {});
   var hook = (info && info.result) || {};
   var registered = String(hook.url || '').split('?')[0];   // drop WEBHOOK_SECRET
