@@ -144,7 +144,17 @@ global.DriveApp = {
   getFoldersByName: () => ({ hasNext: () => true, next: () => FOLDER }),
   createFolder: n => fakeFolder(n)
 };
-global.ScriptApp = { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/TEST/exec' }) };
+// Overridable so a test can simulate the "/dev" head URL, and the missing
+// triggers that went unnoticed for weeks in production.
+global.SCRIPT_URL = 'https://script.google.com/macros/s/TEST/exec';
+global.INSTALLED_TRIGGERS = [
+  'checkDispatchAlerts', 'sendDailyPrepDigest', 'checkUnpaidBalances',
+  'weeklyBackup', 'reportNewErrors'
+];
+global.ScriptApp = {
+  getService: () => ({ getUrl: () => global.SCRIPT_URL }),
+  getProjectTriggers: () => global.INSTALLED_TRIGGERS.map(fn => ({ getHandlerFunction: () => fn }))
+};
 
 // ---- Fake Spreadsheet ----
 class FakeSheet {

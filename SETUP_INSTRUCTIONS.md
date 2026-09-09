@@ -61,9 +61,19 @@ You will need: a Google account, Telegram installed, and a GitHub account.
 
    If you see an error page instead, the deployment access is not set to *Anyone*.
 
-> 🔁 **Every time you redeploy, use "Manage deployments → edit → New version"**, not a
-> brand-new deployment. A new deployment gives a new URL and you would have to redo
-> Steps 4 and 5.
+> 🔁 **Every time you redeploy, use "Manage deployments → ✏️ edit → New version"**, not a
+> brand-new deployment.
+>
+> **Why this matters.** *New deployment* mints a brand-new `/exec` URL. Two things keep
+> pointing at the old one and neither says a word about it:
+>
+> | Consumer | How it learns the URL | Symptom when it is stale |
+> |---|---|---|
+> | Telegram webhook | `registerWebhook()` | **The bot goes completely silent.** No reply to any command, no error anywhere |
+> | Mini App | `APPS_SCRIPT_WEBAPP_URL` in `index.html` | "Could not load orders", app shows offline |
+>
+> This happened on 2026-09-09. If you ever do create a new deployment, run
+> `registerWebhook` again **and** update `index.html`.
 
 ---
 
@@ -73,8 +83,15 @@ Back in the Apps Script editor, choose **registerWebhook** in the function dropd
 press **Run**.
 
 This is what makes the **✅ Mark as Delivered** buttons and the `/today` command work.
-Without it the buttons do nothing. Verify by running **getWebhookInfo** — the log should
-show your `/exec` URL.
+Without it the buttons do nothing. It also publishes the command list, so Telegram's blue
+**Menu** button in the chat lists every command as a tappable row.
+
+Read the summary it prints — it names the URL it registered. Then verify with
+**getWebhookInfo**: the log should show that same `/exec` URL, `pending_update_count: 0` and
+no `last_error_message`.
+
+If it refuses because it found a `/dev` URL, copy the `/exec` URL from **Manage deployments**
+and run `registerWebhookAt("<that url>")` instead.
 
 ---
 
@@ -88,6 +105,23 @@ holds orders never picks up a schema change. This brings it up to date and, crit
 the first payment taken on an older order would erase the advance already paid.
 
 Read the summary it returns. Run it again and it should say *"Nothing to migrate"*.
+
+---
+
+## Step 4c — Check everything is wired up (30 seconds)
+
+Choose **diagnose** in the function dropdown and press **Run**. The report arrives in your
+Telegram chat and in the execution log, and covers the four things that have gone wrong
+silently before:
+
+- **Webhook** — is one registered, does it match this deployment, is there a delivery error
+- **Properties** — which credentials are set (names only; values are never printed)
+- **Triggers** — which of the five scheduled jobs are actually installed
+- **Sheets** — the Orders column count, and whether the Menu has any costs (no costs means
+  no margin figures will ever appear)
+- **Recent errors** — the last five rows of the Log tab
+
+Run this first whenever something looks wrong. It is faster than guessing.
 
 ---
 
@@ -170,6 +204,9 @@ Then do a real end-to-end check on the phone:
 | App saves but nothing appears in Telegram | Wrong chat id, or the owner never pressed Start on the bot | Send `/start` to the bot, re-check `TELEGRAM_OWNER_CHAT_ID` |
 | "Unauthorised: bad or missing key" | `API_KEY` differs between `index.html` and Script Properties | Make them identical |
 | Buttons in Telegram do nothing | Step 4 skipped, or you redeployed to a new URL | Run `registerWebhook` again |
+| **The bot replies to nothing at all** | You used *New deployment*, so Telegram is posting to a URL that no longer answers | Run `diagnose` — it names the mismatch. Then `registerWebhook`, and update `index.html` |
+| The same report arrives over and over | Telegram is retrying because the webhook answered too slowly | Fixed in the current backend; redeploy, then `registerWebhook` to drop the backlog |
+| No commands in the blue Menu button | `setMyCommands` never ran | Run `registerWebhook` — it publishes the list |
 | No reminders arrive | Triggers missing, or Sheet timezone wrong | Redo Step 5; check Step 2.2 |
 | Reminders arrive at odd hours | Sheet timezone is not Colombo | File → Settings → Time zone |
 | Something failed silently | — | Open the **Log** tab in the spreadsheet; every error is recorded there |

@@ -86,7 +86,8 @@ the money still to collect. Each order shows its stage and one button for the ne
 Confirm → Start cooking → Out for delivery → Delivered. Or just send `/today` to the bot.
 
 **Taking payment** — tap **💵 Payment** on an order for a part payment (amount and method), or
-**✔ Paid in full** to settle in one tap. From the bot: `/pay <order id> 20000`.
+**✔ Paid in full** to settle in one tap. From the bot, send `/pay 20000` and tap the customer
+who paid — no order id to type.
 
 **Money** — the **💰 Money** tab shows today's takings, what the cash box should physically
 hold, a one-line cost entry, this month's profit and margin, and who owes you grouped by how
@@ -104,6 +105,35 @@ soon as you are back online. It is never silently lost.
 
 **Every Monday** — a CSV copy of every sheet is emailed and filed in Google Drive, so the
 business is never one lost account away from losing its order history.
+
+---
+
+## Bot commands
+
+All of these appear in Telegram's blue **Menu** button, so nothing has to be remembered.
+`registerWebhook()` publishes the list; `/help` prints the same thing in the chat.
+
+| Command | What it does |
+|---|---|
+| `/today` | Today's orders, times, and what to collect |
+| `/tomorrow` | Tomorrow's orders |
+| `/week` | The next 7 days grouped by day, with the week's collectable total |
+| `/yesterday` | Yesterday's orders |
+| `/pending` | Everything not delivered yet |
+| `/owed` | Who owes money, oldest debt first, with a WhatsApp and a *Paid* button each |
+| `/cash` | Today's money in and out, profit, and what the cash box should hold |
+| `/month` | This month's revenue, costs, profit, margin and where the money went |
+| `/pay 20000` | Record a payment — the bot asks which customer, as buttons |
+| `/spend 4500 chicken` | Record a cost; the category is worked out from the words |
+| `/help` | The list above, in the chat |
+
+Add `bank` or `card` at the end of `/pay` or `/spend` when it was not cash. The explicit
+`/pay <order id> 20000` form still works for scripted use.
+
+**When something looks wrong**, run `diagnose()` in the Apps Script editor. It reports the
+webhook, the credentials that are set (by name, never value), which scheduled jobs are
+installed, the sheet schema, and the last errors — and sends the report to Telegram so it can
+be read on a phone.
 
 ---
 

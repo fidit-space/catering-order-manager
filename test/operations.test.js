@@ -202,4 +202,168 @@ module.exports = function (t) {
   const unauthed = JSON.parse(doGet({ parameter: { action: 'menu', key: 'testkey' } }).getContent());
   t.check('and refuses an unsigned request', unauthed.status === 'error', JSON.stringify(unauthed).slice(0, 80));
 
+  // ------------------------------------------------------------------
+  // Commands the owner can actually find and type.
+  // ------------------------------------------------------------------
+  let uid = 95000;
+  function say(text) {
+    SENT.length = 0;
+    doPost({ parameter: { wh: PROPS.WEBHOOK_SECRET }, postData: { contents: JSON.stringify({
+      update_id: ++uid,
+      message: { message_id: uid, chat: { id: Number(PROPS.TELEGRAM_OWNER_CHAT_ID) },
+                 from: { id: Number(PROPS.TELEGRAM_OWNER_CHAT_ID), username: 'owner' }, text }
+    }) } });
+    return SENT.filter(m => m.method === 'sendMessage');
+  }
+  function tap(data) {
+    SENT.length = 0;
+    handleCallbackQuery_({
+      id: 'cb' + (++uid), data, from: { id: 111, username: 'owner' },
+      message: { chat: { id: 111 }, message_id: 9, text: 'Pick a customer' }
+    });
+    return SENT.filter(m => m.method === 'sendMessage');
+  }
+
+  t.section('The command list is discoverable');
+  // Every command existed but nothing published them: Telegram's blue Menu
+  // button was empty and there was no /help, so the owner had to be told.
+  t.check('every listed command is routable', BOT_COMMANDS.every(c =>
+    ['today', 'tomorrow', 'yesterday', 'week', 'pending', 'owed',
+     'cash', 'month', 'pay', 'spend', 'help'].includes(c.command)),
+    BOT_COMMANDS.map(c => c.command).join(','));
+  t.check('each carries a description Telegram will accept',
+    BOT_COMMANDS.every(c => c.description.length > 0 && c.description.length <= 256));
+  t.check('commands are lowercase, as Telegram requires',
+    BOT_COMMANDS.every(c => /^[a-z_]{1,32}$/.test(c.command)));
+
+  SENT.length = 0;
+  t.check('setMyCommands reaches Telegram', setMyCommands() === true);
+  const pushed = SENT.find(m => m.method === 'setMyCommands');
+  t.check('and pushes the whole list', pushed && pushed.payload.commands.length === BOT_COMMANDS.length,
+    pushed ? String(pushed.payload.commands.length) : 'not sent');
+
+  const help = say('/help');
+  t.check('/help replies', help.length === 1, String(help.length));
+  t.check('it names every command',
+    BOT_COMMANDS.every(c => help[0].payload.text.includes('/' + c.command)));
+  t.check('and shows the money examples, which need more than a description',
+    help[0].payload.text.includes('/spend 4500 chicken') && help[0].payload.text.includes('/pay 20000'));
+  t.check('the fallback menu offers help too', say('hello')[0].payload.reply_markup
+    && JSON.stringify(say('hello')[0].payload.reply_markup).includes('cmd_help'));
+  t.check('the help button works', tap('cmd_help').length === 1);
+
+  t.section('New day-range commands');
+  const weekOrder = saveOrder_({
+    itemsJson: [{ name: 'Chicken Dum Biryani', unit: 'Pax', qty: 30, rate: 950 }],
+    itemsSummary: 'Chicken Dum Biryani: 30 Pax',
+    deliveryDate: todayStr(3), deliveryTime: '12:30',
+    customerName: 'Week View', customerPhone: '0771230003',
+    deliveryAddress: 'Kollupitiya', totalAmount: 28500, advancePaid: 0
+  }).orderId;
+  function todayStr(offsetDays) {
+    return Utilities.formatDate(new Date(Date.now() + (offsetDays || 0) * 864e5), TZ, 'yyyy-MM-dd');
+  }
+  const week = say('/week');
+  t.check('/week replies', week.length === 1, String(week.length));
+  t.check('it includes an order three days out', week[0].payload.text.includes('Week View'));
+  t.check('and totals what is still to collect', week[0].payload.text.includes('to collect this week'));
+  t.check('/yesterday replies', say('/yesterday').length === 1);
+  t.check('a group-style /cash@bot still routes',
+    say('/cash@royal_catering_orders_bot')[0].payload.text.includes('CASH REPORT'));
+
+  t.section('/pay without typing an order id');
+  // A full ORD-260909-143000-A1B is not something anyone types on a phone
+  // mid-service, so the amount alone must be enough.
+  const payOrder = saveOrder_({
+    itemsJson: [{ name: 'Chicken Dum Biryani', unit: 'Pax', qty: 10, rate: 950 }],
+    itemsSummary: 'Chicken Dum Biryani: 10 Pax',
+    deliveryDate: todayStr(2), deliveryTime: '19:00',
+    customerName: 'Pay By Tap', customerPhone: '0771230004',
+    deliveryAddress: 'Wellawatte', totalAmount: 9500, advancePaid: 0
+  }).orderId;
+
+  const offer = say('/pay 4000');
+  t.check('it asks who paid', offer.length === 1 && offer[0].payload.text.includes('Who paid it?'),
+    offer.length ? offer[0].payload.text.slice(0, 60) : 'nothing sent');
+  const buttons = JSON.stringify(offer[0].payload.reply_markup || {});
+  t.check('and offers the unpaid order as a button', buttons.includes('payto_' + payOrder + '_4000_Cash'), buttons.slice(0, 160));
+  t.check('nothing is written until a button is tapped',
+    orderReceived_(payOrder) === 0, String(orderReceived_(payOrder)));
+
+  const applied = tap('payto_' + payOrder + '_4000_Cash');
+  t.check('tapping records the payment', orderReceived_(payOrder) === 4000, String(orderReceived_(payOrder)));
+  t.check('and reports what is still owed',
+    applied.some(m => m.payload.text.includes('5,500')),
+    applied.map(m => m.payload.text).join(' | ').slice(0, 120));
+  t.check('the Ledger holds the entry, not just the mirror column',
+    readLedger_().some(r => r[LED.ORDER] === payOrder && num_(r[LED.AMOUNT]) === 4000 &&
+                            r[LED.TYPE] === 'Payment In' && r[LED.METHOD] === 'Cash'));
+
+  t.check('a stated method is carried through',
+    JSON.stringify(say('/pay 1000 bank')[0].payload.reply_markup).includes('_1000_Bank'));
+  t.check('an unknown method falls back to cash',
+    JSON.stringify(say('/pay 1000 cheque')[0].payload.reply_markup).includes('_1000_Cash'));
+
+  // The explicit form must keep working — it is what the older messages show.
+  say('/pay ' + payOrder + ' 1500 bank');
+  t.check('the explicit "/pay <id> <amount>" form still works',
+    orderReceived_(payOrder) === 5500, String(orderReceived_(payOrder)));
+
+  t.check('a zero amount is refused',
+    say('/pay 0')[0].payload.text.includes('greater than zero'));
+  t.check('nonsense gets the how-to, not a crash',
+    say('/pay')[0].payload.text.includes('How to record a payment'));
+
+  t.section('Webhook registration cannot silently target a dead URL');
+  // Deploy > New deployment mints a fresh /exec URL. Telegram kept posting to
+  // the old one and the bot went completely silent, with no error anywhere.
+  SENT.length = 0;
+  const summary = registerWebhook();
+  const setHook = SENT.find(m => m.method === 'setWebhook');
+  t.check('it registers the deployment URL',
+    setHook && setHook.payload.url.indexOf('https://script.google.com/macros/s/TEST/exec') === 0,
+    setHook ? setHook.payload.url : 'not sent');
+  t.check('it drops the retry backlog from the dead URL', setHook.payload.drop_pending_updates === true);
+  t.check('it publishes the command menu in the same step',
+    SENT.some(m => m.method === 'setMyCommands'));
+  t.check('the summary names the URL it used', summary.includes('/macros/s/TEST/exec'));
+  t.check('and tells the owner index.html needs the same URL', summary.includes('index.html'));
+
+  const realUrl = global.SCRIPT_URL;
+  global.SCRIPT_URL = 'https://script.google.com/macros/s/TEST/dev';
+  let devError = '';
+  try { registerWebhook(); } catch (e) { devError = e.message; }
+  t.check('it refuses the /dev head URL, which Telegram can never reach',
+    devError.includes('head') || devError.includes('/dev'), devError || 'no error thrown');
+  global.SCRIPT_URL = realUrl;
+
+  let badError = '';
+  try { registerWebhookAt('https://evil.example.com/exec'); } catch (e) { badError = e.message; }
+  t.check('registerWebhookAt refuses a non-Apps-Script URL',
+    badError.includes('Not a deployment URL'), badError || 'no error thrown');
+
+  t.section('diagnose() answers "is it wired up?"');
+  SENT.length = 0;
+  const report = diagnose();
+  t.check('it reports every required property by name',
+    ['TELEGRAM_BOT_TOKEN', 'API_KEY', 'WEBHOOK_SECRET'].every(k => report.includes(k)));
+  t.check('but never a property VALUE',
+    !report.includes(PROPS.TELEGRAM_BOT_TOKEN) && !report.includes(PROPS.WEBHOOK_SECRET) &&
+    !report.includes(PROPS.API_KEY),
+    'a credential leaked into the report');
+  t.check('it lists the five scheduled jobs',
+    ['checkDispatchAlerts', 'sendDailyPrepDigest', 'checkUnpaidBalances',
+     'weeklyBackup', 'reportNewErrors'].every(fn => report.includes(fn)));
+  t.check('it sends itself to the owner so it can be read on a phone',
+    SENT.some(m => m.method === 'sendMessage' && m.payload.chat_id === PROPS.TELEGRAM_OWNER_CHAT_ID));
+
+  const allTriggers = global.INSTALLED_TRIGGERS;
+  global.INSTALLED_TRIGGERS = ['checkDispatchAlerts'];
+  const gappy = diagnose();
+  t.check('a missing trigger is called out',
+    /MISSING weeklyBackup/.test(gappy) && /MISSING reportNewErrors/.test(gappy),
+    gappy.split('TRIGGERS')[1] ? gappy.split('TRIGGERS')[1].slice(0, 160) : gappy.slice(0, 120));
+  t.check('and an installed one is not', /OK\s+checkDispatchAlerts/.test(gappy));
+  global.INSTALLED_TRIGGERS = allTriggers;
+
 };

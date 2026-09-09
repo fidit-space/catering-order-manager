@@ -138,6 +138,57 @@ assertions found and fixed while working — a hardcoded unpaid count that other
 
 ---
 
+## 🔴 Task 12: The bot went silent — deployment drift, and commands nobody could find
+- **Assignee:** Claude Code
+- **Status:** `[READY_FOR_AUDIT]`
+- **Trigger:** Umair: *"the /cash command does not report any report do we have more comands like this"*
+
+### Root cause
+The last redeploy was done as **Deploy → New deployment**, which mints a fresh `/exec` URL.
+Two consumers kept pointing at the previous one and **neither said anything**:
+
+| Consumer | Learns the URL from | Symptom |
+|---|---|---|
+| Telegram webhook | `registerWebhook()` | Bot silent to every message — no error anywhere |
+| Mini App | `APPS_SCRIPT_WEBAPP_URL`, `index.html:545` | "Could not load orders" / offline |
+
+This is the same class as F13 and the missing triggers: a state that only exists in Google,
+that no test can see, and that fails quietly. **Requires action in Google to close** —
+`registerWebhook` plus the `index.html` URL.
+
+### Fixed in code
+| Change | Why |
+|---|---|
+| `registerWebhook()` **throws on a `/dev` URL** and returns a readable summary naming the URL it registered | Registering the head deployment produces a bot Telegram can never reach — silently |
+| New **`registerWebhookAt(url)`** | Manual override when URL discovery is wrong; validates the URL shape before calling Telegram |
+| New **`diagnose()`** | One run reports webhook match, property presence (**names only**), the five triggers, sheet schema, Menu costs, and the last five Log rows. Sent to Telegram so it is readable on a phone. Every silent failure this project has had would have shown up here |
+| **`setMyCommands()`**, called from `registerWebhook()` | Telegram's blue Menu button was empty. The commands existed but were undiscoverable — a non-technical owner had no way to learn `/spend` or `/pay` |
+| **`/help`**, plus a `❓ What can I type?` button on the fallback menu | Nothing in the app or the bot documented the typed commands |
+| **`/week`**, **`/yesterday`** | Today/tomorrow was the wrong window for closing the books in the evening, and for the week's shopping |
+| **`/pay 20000`** with no order id | `/pay ORD-260909-143000-A1B 20000` is not something anyone types on a phone mid-service. The bot now replies with the unpaid customers as buttons. Nothing is written until one is tapped — money is never guessed onto an order, even when only one is outstanding |
+| `/cash@botname` now routes | Telegram appends `@botname` to commands in groups |
+
+`BOT_COMMANDS` is the single source for both the Telegram menu and `/help`, so the two cannot
+drift apart.
+
+### Tests
+**349 checks** (was 310); `operations` grew 63 → 102. Covers: `registerWebhook` refusing a `/dev`
+URL and dropping the retry backlog; `registerWebhookAt` refusing a non-Apps-Script URL;
+`diagnose()` naming a missing trigger **and never printing a credential value**; every listed
+command routing; `/pay` by tap writing a real `Payment In` Ledger row while the offer message
+writes nothing.
+
+### For the auditor
+- ⚠️ **Not closed until** `registerWebhook` has been run against the live deployment and
+  `index.html` carries the same `/exec` URL. Paste the `diagnose()` output into AUDIT_LOG as
+  evidence.
+- 🟠 The `/pay` button list shows the **8 largest debts**. Beyond that the owner is told to use
+  `/owed`. Chosen over pagination: eight rows is already the top of a phone screen.
+- ⚪ Menu costs are still blank, so margins remain unavailable. `diagnose()` now says so out loud
+  instead of leaving it to be discovered.
+
+---
+
 ## 🚀 Active Sprint: Security Hardening & Internal Pilot
 
 ### Task 1: Fix IP Protection (Standalone Script Mode)

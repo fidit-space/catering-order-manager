@@ -140,6 +140,29 @@ var DEFAULT_MENU = [
   ['Dessert',  'Gulab Jamun (Catering Pack)',    'Pieces',    60, 10,  'YES', 30]
 ];
 
+/*
+ * The command list, in one place. setMyCommands() pushes it to Telegram so the
+ * blue "Menu" button in the chat lists every command as a tappable row, and
+ * /help renders the same list. A command that is not here is a command the
+ * owner has no way to discover.
+ *
+ * "/money" stays a working alias for "/owed" but is deliberately not listed —
+ * two rows for one report is clutter on a phone.
+ */
+var BOT_COMMANDS = [
+  { command: 'today',     description: "Today's orders and what to collect" },
+  { command: 'tomorrow',  description: "Tomorrow's orders" },
+  { command: 'week',      description: 'The next 7 days, day by day' },
+  { command: 'yesterday', description: "Yesterday's orders" },
+  { command: 'pending',   description: 'Everything not delivered yet' },
+  { command: 'owed',      description: 'Who owes you money, oldest debt first' },
+  { command: 'cash',      description: "Today's money in, out and profit" },
+  { command: 'month',     description: 'This month: revenue, costs, profit' },
+  { command: 'pay',       description: 'Record a payment — /pay 20000' },
+  { command: 'spend',     description: 'Record a cost — /spend 4500 chicken' },
+  { command: 'help',      description: 'What every command does' }
+];
+
 // ==================== ONE-TIME SETUP ====================
 
 /**
@@ -189,18 +212,71 @@ function initSheets() {
   return 'Sheets ready. ' + migrateSheets_();
 }
 
-/** STEP 3 — Run AFTER deploying as a Web App. Enables the Telegram buttons. */
+/**
+ * STEP 3 — Run AFTER deploying as a Web App. Enables the Telegram buttons.
+ *
+ * Run this again after EVERY "Deploy > New deployment", because that mints a
+ * fresh /exec URL and Telegram keeps POSTing to the old one. The bot then goes
+ * completely silent with no error anywhere — it happened on 2026-09-09 and the
+ * only visible symptom was that nothing replied.
+ */
 function registerWebhook() {
   var url = ScriptApp.getService().getUrl();
   if (!url) throw new Error('Deploy this script as a Web App first (Deploy > New deployment > Web app).');
 
-  var hookUrl = url + '?wh=' + encodeURIComponent(cfg_('WEBHOOK_SECRET'));
+  // The head deployment ("/dev") is only reachable by the owner while signed
+  // in, so Telegram can never POST to it. Registering it yields a bot that is
+  // silently dead, which is the worst possible failure mode here.
+  if (url.indexOf('/exec') === -1) {
+    throw new Error('Refusing to register "' + url + '" — that is the head (/dev) URL, not a ' +
+      'deployment. Open Deploy > Manage deployments, copy the /exec URL of the active entry, ' +
+      'and run registerWebhookAt("<that url>") instead.');
+  }
+  return registerWebhookAt(url);
+}
+
+/**
+ * Points the webhook at an explicit deployment URL.
+ *
+ * Use this when registerWebhook() picks up the wrong URL, or after creating a
+ * new deployment when you already have the URL in front of you.
+ */
+function registerWebhookAt(url) {
+  var clean = String(url || '').trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(clean)) {
+    throw new Error('Not a deployment URL. Expected ' +
+      'https://script.google.com/macros/s/.../exec — got "' + clean + '"');
+  }
+
   var res = telegramApi_('setWebhook', {
-    url: hookUrl,
+    url: clean + '?wh=' + encodeURIComponent(cfg_('WEBHOOK_SECRET')),
     allowed_updates: ['message', 'callback_query'],
+    // Clears whatever Telegram queued up while the old URL was dead, so the
+    // owner is not buried in replies to messages sent hours ago.
     drop_pending_updates: true
   });
-  return res;
+  if (!res || res.ok !== true) {
+    throw new Error('Telegram refused the webhook: ' + ((res && res.description) || 'no response'));
+  }
+
+  var menu = setMyCommands();
+
+  return 'Webhook registered.\n' +
+    'URL: ' + clean + '\n' +
+    'Queued updates dropped.\n' +
+    'Command menu: ' + (menu ? 'updated' : 'FAILED — check the Log tab') + '\n\n' +
+    'NEXT: put this same URL into index.html (APPS_SCRIPT_WEBAPP_URL) and push it, ' +
+    'or the Mini App will still be calling the old deployment.';
+}
+
+/**
+ * Publishes the command list to Telegram, so the blue Menu button in the chat
+ * shows every command as a tappable row with a description. Without this the
+ * owner has to remember that /spend and /pay exist.
+ */
+function setMyCommands() {
+  var res = telegramApi_('setMyCommands', { commands: BOT_COMMANDS });
+  return !!(res && res.ok);
 }
 
 /** Diagnostics: shows what Telegram currently thinks the webhook is. */
@@ -211,6 +287,113 @@ function getWebhookInfo() {
 /** Removes the webhook (useful when re-deploying to a new URL). */
 function deleteWebhook() {
   return telegramApi_('deleteWebhook', { drop_pending_updates: true });
+}
+
+/**
+ * One function that answers "is this thing actually wired up?".
+ *
+ * Every silent failure this project has had would have shown up here in a
+ * single run: a webhook pointing at a dead deployment, triggers that were
+ * never installed, a Menu tab with no costs so margins never appear. Returns
+ * the report and also sends it to Telegram, so it can be read from a phone.
+ *
+ * It prints property NAMES only. A credential value must never reach a chat
+ * window, and the registered webhook URL carries WEBHOOK_SECRET in its query
+ * string, so that is stripped before display.
+ */
+function diagnose() {
+  var lines = [];
+  function add(s) { lines.push(s); }
+
+  add('SYSTEM CHECK — ' + nowStr_());
+
+  // --- Credentials: presence only, never values. ---
+  add('');
+  add('PROPERTIES');
+  ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_OWNER_CHAT_ID', 'API_KEY', 'WEBHOOK_SECRET'].forEach(function (k) {
+    add('  ' + (props_().getProperty(k) ? 'OK      ' : 'MISSING ') + k);
+  });
+
+  // --- Webhook: the thing that was broken. ---
+  add('');
+  add('WEBHOOK');
+  var deployed = '';
+  try { deployed = ScriptApp.getService().getUrl() || ''; } catch (e) { deployed = ''; }
+  var info = telegramApi_('getWebhookInfo', {});
+  var hook = (info && info.result) || {};
+  var registered = String(hook.url || '').split('?')[0];   // drop WEBHOOK_SECRET
+
+  add('  Registered:      ' + (registered || '(none — the bot cannot receive anything)'));
+  add('  This deployment: ' + (deployed || '(unknown)'));
+  if (!registered) {
+    add('  FAIL    no webhook set. Run registerWebhook().');
+  } else if (deployed && registered !== deployed) {
+    add('  FAIL    MISMATCH — Telegram is posting to a different deployment.');
+    add('          Run registerWebhookAt("' + deployed + '")');
+  } else {
+    add('  OK      matches this deployment');
+  }
+  add('  Queued updates:  ' + (hook.pending_update_count || 0));
+  if (hook.last_error_message) {
+    add('  FAIL    last delivery error: ' + hook.last_error_message);
+  }
+
+  // --- Scheduled jobs. Three of these were missing for weeks. ---
+  add('');
+  add('TRIGGERS');
+  var installed = {};
+  try {
+    ScriptApp.getProjectTriggers().forEach(function (t) { installed[t.getHandlerFunction()] = true; });
+  } catch (e) { add('  (could not read triggers: ' + e.message + ')'); }
+  ['checkDispatchAlerts', 'sendDailyPrepDigest', 'checkUnpaidBalances',
+   'weeklyBackup', 'reportNewErrors'].forEach(function (fn) {
+    add('  ' + (installed[fn] ? 'OK      ' : 'MISSING ') + fn);
+  });
+
+  // --- Sheets and schema. ---
+  add('');
+  add('SHEETS');
+  try {
+    var orders = ordersSheet_();
+    var cols = orders.getLastColumn();
+    add('  Orders:   ' + Math.max(0, orders.getLastRow() - 1) + ' rows, ' + cols + ' columns' +
+        (cols >= ORDER_HEADERS.length ? ' OK' : ' FAIL — run migrateSheets()'));
+    add('  Ledger:   ' + Math.max(0, ledgerSheet_().getLastRow() - 1) + ' entries');
+    var menu = readMenu_();
+    var costed = menu.filter(function (m) { return num_(m.cost) > 0; }).length;
+    add('  Menu:     ' + menu.length + ' items, ' + costed + ' with a cost' +
+        (costed ? '' : ' FAIL — no margin can be calculated until costs are filled in'));
+  } catch (e) {
+    add('  FAIL    ' + e.message);
+  }
+
+  // --- Recent errors, so a failure does not need the sheet opened to be seen. ---
+  add('');
+  add('RECENT ERRORS');
+  try {
+    var log = logSheet_();
+    var last = log.getLastRow();
+    if (last < 2) {
+      add('  none');
+    } else {
+      var from = Math.max(2, last - 4);
+      log.getRange(from, 1, last - from + 1, 3).getValues().forEach(function (r) {
+        add('  ' + r[0] + '  ' + r[1] + ': ' + String(r[2]).replace(/\s+/g, ' ').substring(0, 100));
+      });
+    }
+  } catch (e) {
+    add('  FAIL    ' + e.message);
+  }
+
+  var report = lines.join('\n');
+  // Telegram caps a message at 4096 characters.
+  var wire = report.length > 3600 ? report.substring(0, 3600) + '\n… truncated' : report;
+  try {
+    sendTelegram_(ownerChat_(), '<pre>' + esc_(wire) + '</pre>');
+  } catch (e) { /* the returned report is still useful without the chat copy */ }
+
+  Logger.log(report);
+  return report;
 }
 
 /**
@@ -1947,34 +2130,87 @@ function sendAgingReport_() {
 }
 
 /**
- * Parses "/pay ORD-260909-123456-AB1C 20000" or "/pay ORD-... 20000 bank".
- * Records a part payment without opening the app — the counterpart to /spend.
+ * Handles "/pay 20000", "/pay 20000 bank", and the explicit
+ * "/pay ORD-260909-123456-AB1C 20000 [method]".
+ *
+ * The amount-only form exists because typing a full order id on a phone,
+ * mid-service, is not something anyone will actually do. Send the amount and
+ * the bot asks which customer it was, as tappable buttons.
  */
 function handlePayCommand_(text, by) {
-  var body = String(text).replace(/^\/pay\s*/i, '').trim();
-  var match = body.match(/^(\S+)\s+([0-9][0-9,.]*)\s*(\w+)?$/);
+  var body = String(text).replace(/^\/pay(@[a-z0-9_]+)?\s*/i, '').trim();
 
-  if (!match) {
+  var withId = body.match(/^(\S*[A-Za-z]\S*)\s+([0-9][0-9,.]*)\s*(\w+)?$/);
+  var amountOnly = body.match(/^([0-9][0-9,.]*)\s*(\w+)?$/);
+
+  if (!withId && !amountOnly) {
     sendTelegram_(ownerChat_(),
       '💵 <b>How to record a payment</b>\n\n' +
-      '<code>/pay ORD-260909-143000-A1B 20000</code>\n' +
-      '<code>/pay ORD-260909-143000-A1B 20000 bank</code>\n\n' +
-      'The order id is on the booking message. Send /owed to see who still owes you.');
+      '<code>/pay 20000</code>  <i>— then tap the customer</i>\n' +
+      '<code>/pay 20000 bank</code>\n\n' +
+      'Send /owed to see who still owes you.');
     return;
   }
 
-  var orderId = match[1];
-  var amount = num_(match[2]);
-  var method = match[3] ? match[3].charAt(0).toUpperCase() + match[3].slice(1).toLowerCase() : 'Cash';
-  if (method === 'Transfer') method = 'Bank';
+  if (amountOnly) {
+    return offerPaymentTargets_(num_(amountOnly[1]), normaliseMethod_(amountOnly[2]));
+  }
+
+  var orderId = withId[1];
+  var amount = num_(withId[2]);
+  var method = normaliseMethod_(withId[3]);
 
   if (amount <= 0) {
     sendTelegram_(ownerChat_(), '⚠️ Enter an amount greater than zero.');
     return;
   }
+  applyPayment_(orderId, amount, method, by);
+}
 
+/** Cash unless told otherwise; "transfer" is what people say for a bank payment. */
+function normaliseMethod_(word) {
+  if (!word) return 'Cash';
+  var m = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  if (m === 'Transfer') return 'Bank';
+  return PAYMENT_METHODS.indexOf(m) === -1 ? 'Cash' : m;
+}
+
+/**
+ * Asks which order an amount belongs to, one button per unpaid customer.
+ * Nothing is written until a button is tapped — money is never guessed onto an
+ * order just because it was the only one outstanding.
+ */
+function offerPaymentTargets_(amount, method) {
+  if (amount <= 0) {
+    sendTelegram_(ownerChat_(), '⚠️ Enter an amount greater than zero, e.g. <code>/pay 20000</code>');
+    return;
+  }
+
+  var unpaid = readUnpaid_();
+  if (!unpaid.length) {
+    sendTelegram_(ownerChat_(), '✅ <b>Nothing is outstanding.</b> Every order is paid up.');
+    return;
+  }
+
+  var keyboard = unpaid.slice(0, 8).map(function (o) {
+    return [{
+      text: String(o.customerName).substring(0, 20) + ' — ' + CURRENCY + ' ' + fmtMoney_(o.balanceDue),
+      callback_data: 'payto_' + o.orderId + '_' + amount + '_' + method
+    }];
+  });
+
+  var msg = '💵 <b>' + CURRENCY + ' ' + fmtMoney_(amount) + '</b> received <i>(' + esc_(method) + ')</i>\n\n';
+  msg += 'Who paid it?';
+  if (unpaid.length > 8) msg += '\n\n<i>Showing the 8 largest debts. Send /owed for the full list.</i>';
+
+  sendTelegram_(ownerChat_(), msg, { inline_keyboard: keyboard });
+}
+
+/** Writes the payment and reports what is left owing. */
+function applyPayment_(orderId, amount, method, by) {
   try {
-    var name = findOrderRow_(orderId) ? findOrderRow_(orderId)[COL.NAME] : orderId;
+    var row = findOrderRow_(orderId);
+    var name = row ? row[COL.NAME] : orderId;
     var result = recordPayment_(orderId, amount, method, by, 'Recorded via /pay');
     var msg = '✅ Recorded <b>' + CURRENCY + ' ' + fmtMoney_(amount) + '</b> from ' + esc_(name) +
       '\n<i>' + esc_(method) + '</i>\n\n';
@@ -1982,8 +2218,10 @@ function handlePayCommand_(text, by) {
       ? '⚠️ Still owed: <b>' + CURRENCY + ' ' + fmtMoney_(result.balance) + '</b>'
       : '🎉 <b>Paid in full.</b>';
     sendTelegram_(ownerChat_(), msg);
+    return result;
   } catch (err) {
-    sendTelegram_(ownerChat_(), '⚠️ ' + esc_(err.message) + '\n\nSend /owed to see the order ids.');
+    sendTelegram_(ownerChat_(), '⚠️ ' + esc_(err.message) + '\n\nSend /owed to see what is outstanding.');
+    return null;
   }
 }
 
@@ -2176,6 +2414,24 @@ function handleCallbackQuery_(query) {
     } else if (data === 'cmd_month') {
       sendMonthReport_();
       answer = 'This month';
+    } else if (data === 'cmd_help') {
+      sendHelp_();
+      answer = 'Commands';
+
+    } else if (data.indexOf('payto_') === 0) {
+      // payto_<orderId>_<amount>_<method>. Order ids never contain "_", so the
+      // last two underscores delimit the amount and method unambiguously.
+      var parts = data.substring('payto_'.length).split('_');
+      var payMethod = parts.pop();
+      var payAmount = num_(parts.pop());
+      var payOrder = parts.join('_');
+      var applied = applyPayment_(payOrder, payAmount, payMethod, describeUser_(query.from));
+      if (applied) {
+        answer = 'Recorded ' + CURRENCY + ' ' + fmtMoney_(payAmount);
+        stampMessage_(query, '💵 ' + CURRENCY + ' ' + fmtMoney_(payAmount) + ' RECORDED');
+      } else {
+        answer = 'Could not record that payment.';
+      }
     }
   } catch (err) {
     logError_('handleCallbackQuery', err);
@@ -2227,9 +2483,16 @@ function handleBotMessage_(message) {
 
   var today = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
   var tomorrow = Utilities.formatDate(new Date(Date.now() + 864e5), TZ, 'yyyy-MM-dd');
+  var yesterday = Utilities.formatDate(new Date(Date.now() - 864e5), TZ, 'yyyy-MM-dd');
 
+  // Telegram appends "@botname" to commands sent in a group.
+  text = text.replace(/@[a-z0-9_]+\b/, '');
+
+  if (text === '/help') return sendHelp_();
   if (text === '/today') return sendDayList_(today, 'Today');
   if (text === '/tomorrow') return sendDayList_(tomorrow, 'Tomorrow');
+  if (text === '/yesterday') return sendDayList_(yesterday, 'Yesterday');
+  if (text === '/week') return sendWeekList_();
   if (text === '/pending') return sendPendingList_();
   if (text === '/money' || text === '/owed') return sendAgingReport_();
   if (text === '/cash') return sendCashReport_();
@@ -2254,9 +2517,71 @@ function handleBotMessage_(message) {
         [
           { text: '💵 Cash Today', callback_data: 'cmd_cash' },
           { text: '📊 This Month', callback_data: 'cmd_month' }
-        ]
+        ],
+        [{ text: '❓ What can I type?', callback_data: 'cmd_help' }]
       ]
     });
+}
+
+/**
+ * Renders BOT_COMMANDS as a chat message. Same source as the blue Menu button,
+ * so the two can never drift apart, plus the two commands that take arguments
+ * and therefore need an example rather than a description.
+ */
+function sendHelp_() {
+  var msg = '❓ <b>WHAT YOU CAN TYPE</b>\n';
+  msg += '━━━━━━━━━━━━━━━━━━━━━\n';
+  BOT_COMMANDS.forEach(function (c) {
+    msg += '\n/' + esc_(c.command) + ' — ' + esc_(c.description);
+  });
+  msg += '\n\n<b>Recording money</b>\n';
+  msg += '<code>/spend 4500 chicken</code>\n';
+  msg += '<code>/spend 1200 gas bank</code>\n';
+  msg += '<code>/pay 20000</code>  <i>— then tap the customer</i>\n\n';
+  msg += '<i>You never have to type an order id. Add <b>bank</b> or <b>card</b> at the end if it was not cash.</i>';
+
+  sendTelegram_(ownerChat_(), msg, {
+    inline_keyboard: [[
+      { text: '📋 Open Catering Manager', web_app: { url: 'https://fidit-space.github.io/catering-order-manager/' } }
+    ]]
+  });
+}
+
+/** The next seven days, grouped by day — the shopping and prep view. */
+function sendWeekList_() {
+  var from = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+  var to = Utilities.formatDate(new Date(Date.now() + 6 * 864e5), TZ, 'yyyy-MM-dd');
+  var orders = readOrders_(from, to).filter(function (o) { return o.status !== 'Cancelled'; });
+
+  if (!orders.length) {
+    sendTelegram_(ownerChat_(), '📭 <b>NEXT 7 DAYS</b>\n\nNothing booked yet.');
+    return;
+  }
+
+  var byDay = {};
+  var days = [];
+  orders.forEach(function (o) {
+    if (!byDay[o.deliveryDate]) { byDay[o.deliveryDate] = []; days.push(o.deliveryDate); }
+    byDay[o.deliveryDate].push(o);
+  });
+  days.sort();
+
+  var toCollect = 0;
+  var msg = '🗓 <b>NEXT 7 DAYS</b> — ' + orders.length + ' order(s)\n';
+  msg += '━━━━━━━━━━━━━━━━━━━━━\n';
+  days.forEach(function (d) {
+    msg += '\n<b>' + esc_(prettyDate_(d)) + '</b>\n';
+    byDay[d].forEach(function (o) {
+      msg += '  ' + esc_(o.deliveryTime) + ' — ' + esc_(o.customerName) + ' ' + (STATUS_ICON[o.status] || '') + '\n';
+      msg += '     ' + esc_(o.itemsSummary) + '\n';
+      toCollect += o.balanceDue > 0 ? o.balanceDue : 0;
+    });
+  });
+  if (toCollect > 0) {
+    msg += '\n━━━━━━━━━━━━━━━━━━━━━\n';
+    msg += '💰 <b>' + CURRENCY + ' ' + fmtMoney_(toCollect) + ' to collect this week</b>';
+  }
+  sendTelegram_(ownerChat_(), msg);
 }
 
 function sendDayList_(dateStr, label) {
