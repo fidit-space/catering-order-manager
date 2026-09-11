@@ -34,7 +34,13 @@ function install() {
 
   const el = id => els[id] || (els[id] = new El(id));
 
-  global.window = { Telegram: undefined, addEventListener() {}, scrollTo() {}, open() {} };
+  // location.search decides which business a launch belongs to, so a test has
+  // to be able to set it.
+  global.window = {
+    Telegram: undefined,
+    location: { search: '', href: 'https://fidit-space.github.io/catering-order-manager/' },
+    addEventListener() {}, scrollTo() {}, open() {}
+  };
   global.document = {
     getElementById: el,
     querySelectorAll: () => [],

@@ -32,6 +32,18 @@
 var DEPLOYMENT_URL =
   'https://script.google.com/macros/s/AKfycbyjTmYIl6Jno57wxRY21lTQO2u4yJkT-8P7gxhzo813psMym-3b7akx7zZxcoSWmvy_ig/exec';
 
+/*
+ * Bump this on every change to this file. CI enforces it.
+ *
+ * Each business runs its own copy of this script, and Apps Script has no way
+ * to push an update to them — every deployment is a manual paste. With more
+ * than one instance to keep in step, "is that one running the current code?"
+ * becomes a question somebody has to be able to answer, and this project has
+ * already lost days to a deployment quietly serving an old version. /status
+ * prints this, so the answer takes five seconds.
+ */
+var VERSION = '2026-09-11.1';
+
 var TZ = 'Asia/Colombo';          // Business timezone (UTC+05:30, no DST)
 var CURRENCY = 'Rs.';             // Displayed in Telegram messages
 var COUNTRY_CODE = '94';          // Sri Lanka — used to normalise phone numbers
@@ -324,6 +336,19 @@ function setMyCommands() {
   return !!(res && res.ok);
 }
 
+/**
+ * The Mini App page this instance's buttons should open.
+ *
+ * One page serves every business; the ?client= on the end decides which
+ * backend it talks to. A client deployment sets MINI_APP_URL to
+ * ".../catering-order-manager/?client=<their id>". Without it, their bot's
+ * buttons would open the demo instance.
+ */
+function miniAppUrl_() {
+  return props_().getProperty('MINI_APP_URL') ||
+         'https://fidit-space.github.io/catering-order-manager/';
+}
+
 /** Diagnostics: shows what Telegram currently thinks the webhook is. */
 function getWebhookInfo() {
   return telegramApi_('getWebhookInfo', {});
@@ -351,6 +376,17 @@ function diagnose() {
   function add(s) { lines.push(s); }
 
   add('SYSTEM CHECK — ' + nowStr_());
+
+  // --- Which business is this, and is it running current code? ---
+  add('');
+  add('INSTANCE');
+  add('  Name:     ' + (props_().getProperty('TENANT_NAME') || '(unnamed — set TENANT_NAME)'));
+  add('  Version:  ' + VERSION);
+  add('  Mini App: ' + miniAppUrl_());
+  if (!props_().getProperty('MINI_APP_URL')) {
+    add('  NOTE    MINI_APP_URL is not set, so the buttons open the default page.');
+    add('          A client instance must set it, or its bot opens the demo.');
+  }
 
   // --- Credentials: presence only, never values. ---
   add('');
@@ -2800,7 +2836,7 @@ function handleBotMessage_(message) {
     'Choose an action below or tap <b>📋 New Order</b> to book an order:',
     {
       inline_keyboard: [
-        [{ text: '📋 Open Catering Manager', web_app: { url: 'https://fidit-space.github.io/catering-order-manager/' } }],
+        [{ text: '📋 Open Catering Manager', web_app: { url: miniAppUrl_() } }],
         [
           { text: '📅 Today', callback_data: 'cmd_today' },
           { text: '📦 Tomorrow', callback_data: 'cmd_tomorrow' }
@@ -2840,7 +2876,7 @@ function sendHelp_() {
 
   sendTelegram_(ownerChat_(), msg, {
     inline_keyboard: [[
-      { text: '📋 Open Catering Manager', web_app: { url: 'https://fidit-space.github.io/catering-order-manager/' } }
+      { text: '📋 Open Catering Manager', web_app: { url: miniAppUrl_() } }
     ]]
   });
 }

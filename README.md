@@ -126,7 +126,7 @@ All of these appear in Telegram's blue **Menu** button, so nothing has to be rem
 | `/pay 20000` | Record a payment — the bot asks which customer, as buttons |
 | `/spend 4500 chicken` | Record a cost; the category is worked out from the words |
 | `/help` | The list above, in the chat |
-| `/status` | Health check — webhook, credentials, scheduled jobs, sheet schema, recent errors |
+| `/status` | Health check — which business, which version, webhook, credentials, scheduled jobs, recent errors |
 
 Add `bank` or `card` at the end of `/pay` or `/spend` when it was not cash. The explicit
 `/pay <order id> 20000` form still works for scripted use.
@@ -136,6 +136,26 @@ set (by name, never value), which scheduled jobs are installed, the sheet schema
 errors. Run it after every deployment and once a week — six of the last nine faults in this
 system lived in Google settings rather than in code, where no test can see them. `diagnose()`
 in the Apps Script editor prints the same report, for when the bot itself is not answering.
+
+---
+
+## One codebase, several businesses
+
+The page on GitHub Pages serves every business. Which backend a launch talks to is decided by the
+`?client=` on the URL the bot's Menu Button opens, resolved against the `TENANTS` map at the top
+of `index.html`. Each business has its own bot, its own Google Sheet and its own Apps Script
+deployment, so orders and money never mix.
+
+Businesses cannot reach each other's data, and not because a rule says so: every deployment
+verifies Telegram's signature against **its own bot token**, so a launch signed by one bot cannot
+verify against another's backend.
+
+A change to `index.html` reaches every business on the next push. A change to the backend does
+**not** — Apps Script has no way to push an update, so each deployment is a manual paste. `VERSION`
+at the top of the backend is printed by `/status` so a stale instance can be spotted in seconds;
+CI fails a push that changes the backend without moving it.
+
+Adding a business: **`CLIENT_ONBOARDING.md`**.
 
 ---
 

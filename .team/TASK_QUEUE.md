@@ -239,6 +239,60 @@ from a phone, so `diagnose()` is now also a bot command and a button on the menu
 
 ---
 
+## 🔴 Task 14: Client instance access — one codebase, several businesses
+- **Assignee:** Claude Code
+- **Status:** `[READY_FOR_AUDIT]`
+- **Trigger:** Umair: *"We need keep our current bot with us and need to provide application
+  access to client… when we received a request of issue or modification… we can do the
+  modification and it will reflect both."*
+
+### The requirement
+FIDIT keeps ownership — code, both bot tokens, the Google account. The client gets a working app,
+their own records, and read-only sight of their own books. One fix reaches both.
+
+### Why sharing the existing instance was not an option
+Single-tenant by construction: one bot, one Sheet, one `TELEGRAM_OWNER_CHAT_ID`, and `index.html`
+hard-coded exactly one backend. Adding the client to the existing bot would have put FIDIT's test
+orders and the client's real money in the same `Orders` tab, the same `Ledger` and the same
+`/cash` report.
+
+### Built
+| Change | Why |
+|---|---|
+| `TENANTS` map + `tenantId()` in `index.html` | Resolves `start_param`, then `?client=`, then a default. Keeps the variable names `APPS_SCRIPT_WEBAPP_URL` / `API_KEY`, so none of the other ~1,600 lines changed. |
+| Default is **demo**, never a client | A bot with a mistyped Menu Button must not land on live books. `__proto__`, `constructor`, overlong and malformed ids all fall back — tested. |
+| Business name shown on screen | The failure this prevents is silent: a misrouted launch booking real orders into another business's Sheet with nothing to say so. |
+| `miniAppUrl_()` + `MINI_APP_URL` property | Two sites hard-coded the Pages URL, so a client's bot buttons would have opened FIDIT's instance. `diagnose()` warns when the property is unset. |
+| `VERSION` + `INSTANCE` block in `diagnose()` | Apps Script cannot push updates; every business is a manual paste. With more than one instance, "is that one current?" has to be answerable. CI fails a backend change that does not move `VERSION`. |
+| `CLIENT_ONBOARDING.md` | The repeatable nine-step checklist, all from FIDIT's accounts. |
+
+### Security position
+The auth model is **unchanged** — no new surface, and `bc49558` untouched. Cross-tenant access is
+closed by construction: `initData` is HMAC'd with each bot's own token, so a launch signed by Bot
+A cannot verify against Bot B's deployment. The `TENANTS` entries are public, as they always were;
+`index.html` is served by GitHub Pages and a static page cannot hold a secret.
+
+### Tests
+**444 checks**, up from 415. New `test/tenancy.test.js` (29): routing from every source, nine
+malformed inputs all falling back to demo, no two businesses sharing a URL or a key (the
+copy-paste mistake that would point two businesses at one Sheet), the on-screen label, and
+`/status` naming the business and its version. `test/helpers/dom-stub.js` gained a `location`.
+
+### For the auditor
+- ⚠️ **Not deployable until Phase 0 is done.** The existing instance still has a possibly-dead
+  webhook, unresolved sign-in (F‑03) and **all five triggers missing**. Tenancy on a broken base
+  doubles the unknowns.
+- 🟠 The honest limitation: **only the frontend reflects to both automatically.** Backend changes
+  are a manual paste per instance. `clasp` would fix it and is forbidden by ADR 001, so the
+  mitigation is `VERSION` visibility, not automation.
+- ⚪ Antigravity's `multi_user_chef_access_plan.md` (chef/kitchen roles) is **deferred**, not
+  rejected. Its "immediate workaround" — adding the chef to `EXTRA_TELEGRAM_USER_IDS` — must not
+  be used: that grants full **write** access to money (cancel, mark paid, record payments,
+  refunds, expenses, edit prices), and does not grant bot access at all, since
+  `handleBotMessage_` gates on `chat.id === ownerChat_()` and never consults that property.
+
+---
+
 ## 🚀 Active Sprint: Security Hardening & Internal Pilot
 
 ### Task 1: Fix IP Protection (Standalone Script Mode)
@@ -315,6 +369,6 @@ from a phone, so `diagnose()` is now also a bot command and a button on the menu
 ---
 
 ## 🔮 Backlog (Sprint 2: Multi-Tenant Scale)
-- [ ] Support `?client=royal` in `index.html` for dynamic config resolution.
+- [x] ~~Support `?client=royal` in `index.html` for dynamic config resolution.~~ — Task 14.
 - [ ] Auto-archive closed orders older than 60 days to an `Archive` tab.
 - [ ] Add branded WhatsApp Canvas image receipt generation.

@@ -108,6 +108,7 @@
     }
     .alert.warn { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
     .alert.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .instance-label { font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; opacity: .6; margin: 2px 0 0; }
     .pending-reason { flex-basis: 100%; opacity: .85; font-size: .85em; margin-top: 2px; }
     .alert button {
       margin-left: auto; border: none; border-radius: 8px; padding: 8px 12px;
@@ -340,6 +341,7 @@
     <header>
       <h1 id="newOrderTitle">🍲 New Order</h1>
       <p id="newOrderSubtitle">Book an order in under a minute</p>
+      <p id="instanceLabel" class="instance-label" hidden></p>
     </header>
 
     <section class="card">
@@ -542,11 +544,59 @@
 
 <script>
 /* ============================================================
-   CONFIGURATION — set these two values during setup.
-   See SETUP_INSTRUCTIONS.md
+   TENANTS — one entry per business, one backend each.
+   See CLIENT_ONBOARDING.md to add a business.
+
+   One page serves every business. Which backend it talks to is decided by the
+   ?client= on the URL that the bot's Menu Button opens, so a fix pushed here
+   reaches every business at once while their orders and money stay in
+   completely separate Google Sheets.
+
+   Nothing here is secret. GitHub Pages serves this file to the world, so both
+   values have always been public. What actually protects a business is that
+   its Apps Script deployment verifies Telegram's signature against ITS OWN bot
+   token — a launch signed by one bot cannot verify against another's backend,
+   so these entries cannot be used to cross from one business to another.
    ============================================================ */
-var APPS_SCRIPT_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyjTmYIl6Jno57wxRY21lTQO2u4yJkT-8P7gxhzo813psMym-3b7akx7zZxcoSWmvy_ig/exec";
-var API_KEY = "fidit-royal-v2";
+var TENANTS = {
+  demo: {
+    name: 'FIDIT Demo',
+    url: 'https://script.google.com/macros/s/AKfycbyjTmYIl6Jno57wxRY21lTQO2u4yJkT-8P7gxhzo813psMym-3b7akx7zZxcoSWmvy_ig/exec',
+    key: 'fidit-royal-v2'
+  }
+  // royal: {
+  //   name: 'Royal Catering',
+  //   url: 'PASTE_CLIENT_EXEC_URL',
+  //   key: 'PASTE_CLIENT_API_KEY'
+  // }
+};
+
+/* Anything unrecognised lands here. It must never be a live client: a bot with
+   a mistyped Menu Button would otherwise drop that business into someone
+   else's books with nothing on screen to say so. */
+var DEFAULT_TENANT = 'demo';
+
+/**
+ * Which business this launch belongs to.
+ *
+ * Telegram's own start_param comes first (a t.me/<bot>/<app>?startapp=<id>
+ * link), then ?client= on the query string, which is what the Menu Button
+ * uses. Reads window.Telegram directly rather than the tg shortcut below, so
+ * this block stays self-contained and order-independent.
+ */
+function tenantId() {
+  var wa = window.Telegram && window.Telegram.WebApp;
+  var viaStart = wa && wa.initDataUnsafe && wa.initDataUnsafe.start_param;
+  var match = /[?&]client=([A-Za-z0-9_-]{1,32})/.exec((window.location && window.location.search) || '');
+  var id = String(viaStart || (match && match[1]) || '').toLowerCase();
+  return Object.prototype.hasOwnProperty.call(TENANTS, id) ? id : DEFAULT_TENANT;
+}
+
+var TENANT = TENANTS[tenantId()];
+
+// Same names the rest of this file already uses, so nothing else changes.
+var APPS_SCRIPT_WEBAPP_URL = TENANT.url;
+var API_KEY = TENANT.key;
 
 var COUNTRY_CODE = "94";     // Sri Lanka
 var CURRENCY = "Rs.";
@@ -566,6 +616,16 @@ if (!tg || tg.platform === 'unknown') {
   var b = document.getElementById('consoleBanner');
   if (b) b.hidden = false;
 }
+
+/* Name the business on screen. Without it, a bot whose Menu Button is missing
+   its ?client= opens the wrong instance silently, and orders get booked into
+   another business's Sheet with nothing to show for it. */
+(function showInstance() {
+  var label = document.getElementById('instanceLabel');
+  if (!label) return;
+  label.textContent = TENANT.name;
+  label.hidden = false;
+})();
 
 /** Telegram reports its own light/dark scheme; the CSS tones key off this. */
 function applyThemeClass() {

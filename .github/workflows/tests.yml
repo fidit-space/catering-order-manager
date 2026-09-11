@@ -69,6 +69,32 @@ jobs:
           fi
           echo "No secret credentials in the tree."
 
+      # Each business runs its own manually-pasted copy of the backend, and
+      # Apps Script cannot push an update to them. VERSION is the only way to
+      # tell a stale deployment from a current one, so it must not go stale
+      # itself.
+      - name: Assert VERSION moved with the backend
+        if: github.event_name == 'push'
+        run: |
+          git fetch --depth=2 origin "${{ github.sha }}" 2>/dev/null || true
+          if ! git rev-parse HEAD~1 >/dev/null 2>&1; then
+            echo "No parent commit to compare against; skipping."; exit 0
+          fi
+          if git diff --quiet HEAD~1 HEAD -- backend/google_apps_script.js; then
+            echo "Backend unchanged."; exit 0
+          fi
+          before=$(git show HEAD~1:backend/google_apps_script.js | grep -oE "^var VERSION = '[^']+'" || true)
+          after=$(grep -oE "^var VERSION = '[^']+'" backend/google_apps_script.js || true)
+          if [ -z "$after" ]; then
+            echo "::error::backend/google_apps_script.js has no VERSION constant."; exit 1
+          fi
+          if [ "$before" = "$after" ]; then
+            echo "::error::The backend changed but VERSION did not ($after). Every business runs a"
+            echo "::error::separate manual deployment; without a bump, /status cannot tell a stale one apart."
+            exit 1
+          fi
+          echo "VERSION moved: $before -> $after"
+
       # The exposure on 2026-09-08 happened because writes were guarded only by
       # a key published in the page. This asserts the real gate is still wired
       # in, so nobody can quietly remove it.
