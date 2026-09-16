@@ -370,5 +370,17 @@ copy-paste mistake that would point two businesses at one Sheet), the on-screen 
 
 ## 🔮 Backlog (Sprint 2: Multi-Tenant Scale)
 - [x] ~~Support `?client=royal` in `index.html` for dynamic config resolution.~~ — Task 14.
+- [x] ~~Cloudflare Pages migration research and `_headers` configuration.~~ — Task 15.
 - [ ] Auto-archive closed orders older than 60 days to an `Archive` tab.
 - [ ] Add branded WhatsApp Canvas image receipt generation.
+
+---
+
+## 🟢 Task 15: Cloudflare Pages migration feasibility & headers configuration
+- **Assignee:** Antigravity
+- **Status:** `[DONE]`
+- **Resolution:**
+  - Evaluated zero-cost feasibility of hosting frontend on Cloudflare Pages.
+  - Authored `.team/CLOUDFLARE_RESEARCH.md` documenting hybrid architecture, mobile edge performance in South Asia, and multi-tenant setup.
+  - Created `_headers` configuring `Cache-Control: no-cache, no-store, must-revalidate` and Telegram WebApp iframe embedding CSP.
+

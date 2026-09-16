@@ -13,7 +13,7 @@ revenue_impact: med
 effort: low
 next_action: "Deploy Google Apps Script backend, link Google Sheets template, and publish GitHub Pages for client onboarding"
 blockers: []
-updated: 2026-09-09
+updated: 2026-09-16
 docs:
   - README.md
   - SETUP_INSTRUCTIONS.md

@@ -1,0 +1,13 @@
+# Cloudflare Pages Headers Configuration
+# Ensures Telegram WebApp embedding works smoothly and caches never serve stale order forms.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy: frame-ancestors 'self' https://web.telegram.org https://*.telegram.org telegram:;
+
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
