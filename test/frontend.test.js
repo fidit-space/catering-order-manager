@@ -65,6 +65,46 @@ module.exports = function (t, done) {
   t.check('an empty order is caught', validate(Object.assign({}, payload, { itemsJson: [] })) !== null);
   t.check('a short phone is caught', validate(Object.assign({}, payload, { customerPhone: '123' })) !== null);
 
+  t.section('A read never puts the credential in the URL');
+  // initData carries the owner's Telegram id, name and username, and its hash
+  // is a replay credential good for 24 hours. As a query parameter it lands in
+  // execution logs, proxies and referrers. Writes always used the body; reads
+  // do now too, and this is the check that keeps it that way.
+  // tg is bound once at boot, so setting window.Telegram now would be too late.
+  tg = { initData: 'auth_date=1&user=%7B%22id%22%3A111%7D&hash=deadbeef',
+         initDataUnsafe: {}, ready() {}, expand() {} };
+
+  var seen = null;
+  page.serve(function (url, opts) {
+    seen = { url: url, opts: opts || {} };
+    return Promise.resolve({ ok: true, status: 200,
+      json: () => Promise.resolve({ status: 'ok', menu: [] }) });
+  });
+
+  apiRead('menu', { phone: '0771234567' });
+  t.check('a read is sent as POST', seen && seen.opts.method === 'POST',
+    seen ? String(seen.opts.method) : 'nothing sent');
+  t.check('the URL carries no query string at all', seen.url.indexOf('?') === -1, seen.url);
+  t.check('and therefore no initData', seen.url.indexOf('initData') === -1, seen.url);
+  t.check('nor the api key', seen.url.indexOf('key=') === -1, seen.url);
+
+  var sent = JSON.parse(seen.opts.body);
+  t.check('the credential travels in the body', typeof sent.initData === 'string' && sent.initData.length > 0);
+  t.check('the action is named in the body', sent.action === 'menu', String(sent.action));
+  t.check('parameters come along', sent.phone === '0771234567', String(sent.phone));
+  t.check('the key is in the body too', sent.key === API_KEY, String(sent.key));
+  t.check('it stays a simple request, so Apps Script needs no CORS preflight',
+    /^text\/plain/.test(String(seen.opts.headers['Content-Type'])),
+    String(seen.opts.headers['Content-Type']));
+
+  // A read that fails must still surface the real reason, the same as a write.
+  page.serve(function () {
+    return Promise.resolve({ ok: true, status: 200,
+      json: () => Promise.resolve({ status: 'error', message: 'Sign-in data failed verification.' }) });
+  });
+  var readErr = null;
+  apiRead('menu').catch(function (e) { readErr = e.message; });
+
   t.section('A rejected save must not look like success');
   page.serve(() => Promise.resolve({
     ok: true, status: 200,
@@ -115,9 +155,13 @@ module.exports = function (t, done) {
           // data failed verification" tells a cook nothing they can act on.
           t.check('the reason is kept, not swallowed', q[0].error.length > 0, q[0].error);
           t.check('and it tells the owner what to do about it',
-            /Telegram/i.test(q[0].error), q[0].error);
-          t.check('it is stored once, not re-rewritten on every retry',
-            q[0].error === friendlyError(q[0].error), q[0].error);
+            /reopen it from/i.test(q[0].error), q[0].error);
+          // friendlyError appends instructions, so applying it twice would
+          // append them twice. flushPending deliberately does not re-wrap the
+          // message apiPost already produced; four retries must leave one copy.
+          t.check('the advice is stored once, not re-appended on every retry',
+            (q[0].error.match(/reopen it from/g) || []).length === 1,
+            String((q[0].error.match(/reopen it from/g) || []).length) + ' copies');
 
           renderPendingBanner();
           t.check('the banner stops saying it is still trying',

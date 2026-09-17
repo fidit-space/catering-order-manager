@@ -737,20 +737,27 @@ function initData() {
   return (tg && tg.initData) || '';
 }
 
-function apiGet(action, params) {
-  var qs = ['action=' + encodeURIComponent(action), 'key=' + encodeURIComponent(API_KEY)];
-  if (initData()) qs.push('initData=' + encodeURIComponent(initData()));
+/**
+ * A read.
+ *
+ * Goes out as a POST with the credential in the BODY. It used to be a GET with
+ * initData in the query string — which carried the owner's Telegram id, name
+ * and username, and a hash that is a replay credential good for 24 hours, into
+ * the one part of an HTTPS request that reliably gets written down: execution
+ * logs, proxies, referrers.
+ *
+ * Delegates to apiPost rather than repeating it, so reads and writes cannot
+ * drift apart on error handling — apiPost also checks the HTTP status, which
+ * the old apiGet did not.
+ */
+function apiRead(action, params) {
+  var payload = { action: action };
   Object.keys(params || {}).forEach(function (k) {
     if (params[k] !== undefined && params[k] !== null && params[k] !== '') {
-      qs.push(k + '=' + encodeURIComponent(params[k]));
+      payload[k] = params[k];
     }
   });
-  return fetch(APPS_SCRIPT_WEBAPP_URL + '?' + qs.join('&'), { method: 'GET', redirect: 'follow' })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      if (data.status !== 'ok' && data.status !== 'success') throw new Error(friendlyError(data.message));
-      return data;
-    });
+  return apiPost(payload);
 }
 
 /**
@@ -842,7 +849,7 @@ function loadMenu() {
 
   if (!isConfigured()) { $('configBanner').hidden = false; return; }
 
-  apiGet('menu').then(function (data) {
+  apiRead('menu').then(function (data) {
     if (data.menu && data.menu.length) {
       menu = data.menu;
       lsSet(LS.MENU, menu);
@@ -1021,7 +1028,7 @@ function scheduleCustomerLookup() {
   if (phone.length < 9 || !isConfigured()) { $('customerChip').hidden = true; return; }
 
   lookupTimer = setTimeout(function () {
-    apiGet('customer', { phone: phone }).then(function (data) {
+    apiRead('customer', { phone: phone }).then(function (data) {
       var c = data.customer;
       if (!c) { $('customerChip').hidden = true; return; }
       $('customerChip').hidden = false;
@@ -1278,8 +1285,8 @@ function loadOrders() {
   $('ordersList').innerHTML = '<div class="empty">Loading…</div>';
 
   var request = currentRange === 'unpaid'
-    ? apiGet('unpaid')
-    : apiGet('orders', rangeDates(currentRange));
+    ? apiRead('unpaid')
+    : apiRead('orders', rangeDates(currentRange));
 
   request.then(function (data) {
     renderOrders(data.orders || []);
@@ -1500,7 +1507,7 @@ function loadMoney() {
   }
   $('moneySubtitle').textContent = 'Loading…';
 
-  apiGet('money').then(function (data) {
+  apiRead('money').then(function (data) {
     moneyMeta.categories = data.categories || [];
     moneyMeta.methods = data.methods || ['Cash'];
     renderMoney(data);

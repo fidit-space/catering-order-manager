@@ -384,6 +384,56 @@ redeployed keeps working, and **anonymous GET health still reports the version**
 
 ---
 
+## 🔴 Task 19: F-06 step 2 — the credential leaves the URL
+- **Assignee:** Claude Code
+- **Status:** `[READY_FOR_AUDIT]`
+- **Trigger:** Task 18 shipped; both instances confirmed on `2026-09-18.2` before this was merged.
+
+### Closed
+`initData` no longer travels in a query string. Every read is a POST with the credential in the
+body, the same as every write has always been.
+
+What was exposed: the owner's Telegram id, name and username, plus a `hash` that is a replay
+credential valid for 24 hours — written into the one part of an HTTPS request that reliably gets
+recorded, in Apps Script execution logs, proxies and referrers.
+
+### The rollout worked as designed
+| Step | Shipped | Gate |
+|---|---|---|
+| Backend accepts reads on POST *and* GET | `18a391c` | none needed — GET untouched, POST unused |
+| **Both instances confirmed current** | — | `node tools/instances.js` → `All 2 instance(s) current` |
+| Frontend reads switch to POST | this task | only after the gate above passed |
+
+Had this gone out in one release, the frontend would have reached the Cloudflare edge in about a
+minute while Basith Foods' backend still only answered GET — every read broken for a paying
+client, caused by a privacy fix. The gate is the reason that did not happen, and `VERSION` on the
+open health endpoint (Task 17) is the reason the gate was checkable at all.
+
+### Built
+`apiGet` is gone. `apiRead(action, params)` builds the payload and **delegates to `apiPost`**,
+so reads and writes cannot drift apart on error handling — and reads gain the HTTP status check
+`apiGet` never had.
+
+### Tests
+**491 checks**, up from 482. The new frontend section asserts the property that matters rather
+than the implementation: a read is a POST, the URL has **no query string at all**, and the
+credential, key, action and parameters are all in the body — plus that it stays `text/plain` so
+Apps Script still needs no CORS preflight.
+
+Two pre-existing assertions were corrected, not the code: they only passed because the test had
+never set `tg`, so the app believed it was running outside Telegram. With `tg` set, the error
+text is the better in-Telegram wording, and one assertion was checking that `friendlyError` is
+idempotent — which it is not, by design, since it appends instructions. Replaced with the check
+that actually matters: after four retries the advice appears **once**, not four times.
+
+### For the auditor
+- ⚪ The GET read routes in `readAction_` are now dead weight and can be deleted in a later pass.
+  Leaving them costs nothing and keeps a rollback path while this is still new in production.
+- ⚪ `auth_max_age_hours` (default 24) now bounds a credential that no longer leaks into logs, so
+  the case for shortening it is weaker than it was when F-06 was raised.
+
+---
+
 ## 🚀 Active Sprint: Security Hardening & Internal Pilot
 
 ### Task 1: Fix IP Protection (Standalone Script Mode)
