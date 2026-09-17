@@ -42,7 +42,7 @@ var DEPLOYMENT_URL =
  * already lost days to a deployment quietly serving an old version. /status
  * prints this, so the answer takes five seconds.
  */
-var VERSION = '2026-09-18.2';
+var VERSION = '2026-09-18.3';
 
 var TZ = 'Asia/Colombo';          // Business timezone (UTC+05:30, no DST)
 var CURRENCY = 'Rs.';             // Displayed in Telegram messages
@@ -649,8 +649,8 @@ function validateInitData_(initData) {
 
   var pairs = String(initData).split('&');
   var hash = '';
-  var fields = [];
-  var withoutSignature = [];
+  var keys = [];
+  var withoutSignatureKeys = [];
   var data = {};
 
   for (var i = 0; i < pairs.length; i++) {
@@ -661,19 +661,31 @@ function validateInitData_(initData) {
     if (key === 'hash') { hash = value; continue; }
 
     data[key] = value;
-    fields.push(key + '=' + value);
+    keys.push(key);
     // Bot API 8.0 added "signature" (Ed25519, for third-party validation).
     // Telegram's own spec excludes only "hash" from the HMAC check string, so
     // signature belongs in it — dropping it made every launch from a recent
     // client fail verification. Both forms are tried below because which one
     // a given client signs is not worth guessing at.
-    if (key !== 'signature') withoutSignature.push(key + '=' + value);
+    if (key !== 'signature') withoutSignatureKeys.push(key);
   }
 
   if (!hash) return { ok: false, reason: 'Sign-in data is missing its signature.' };
 
-  fields.sort();
-  withoutSignature.sort();
+  /*
+   * Telegram sorts the check string by FIELD NAME. Sorting the assembled
+   * "key=value" lines instead happens to give the same order for every field
+   * Telegram sends today — "=" sorts before every character they use, so a key
+   * that prefixes another still comes first — but it is correct by accident,
+   * and a future field could break it in a way indistinguishable from a wrong
+   * bot token. Sort the keys.
+   */
+  function checkString(names) {
+    return names.slice().sort().map(function (k) { return k + '=' + data[k]; }).join('\n');
+  }
+
+  var fields = checkString(keys).split('\n');
+  var withoutSignature = checkString(withoutSignatureKeys).split('\n');
 
   // secret = HMAC(key: "WebAppData", message: bot token)
   var secret = Utilities.computeHmacSha256Signature(cfg_('TELEGRAM_BOT_TOKEN'), 'WebAppData');
@@ -1315,6 +1327,14 @@ function setOrderStatus_(orderId, status) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
+    return setOrderStatusHeld_(orderId, status);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** The body of setOrderStatus_, for callers ALREADY holding the script lock. */
+function setOrderStatusHeld_(orderId, status) {
     var sheet = ordersSheet_();
     var data = sheet.getDataRange().getValues();
     for (var i = 1; i < data.length; i++) {
@@ -1327,9 +1347,6 @@ function setOrderStatus_(orderId, status) {
       return { status: 'success', orderId: orderId, newStatus: status };
     }
     throw new Error('Order not found: ' + orderId);
-  } finally {
-    lock.releaseLock();
-  }
 }
 
 /**
@@ -1338,13 +1355,23 @@ function setOrderStatus_(orderId, status) {
  * previously that balance simply vanished from every view in the system.
  */
 function cancelOrder_(orderId) {
-  var order = findOrderRow_(orderId);
-  if (!order) throw new Error('Order not found: ' + orderId);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  var order, received, result;
+  try {
+    order = findOrderRow_(orderId);
+    if (!order) throw new Error('Order not found: ' + orderId);
 
-  var received = orderReceived_(orderId);
-  var result = setOrderStatus_(orderId, 'Cancelled');
-  result.receivedHeld = received;
+    received = orderReceived_(orderId);
+    result = setOrderStatusHeld_(orderId, 'Cancelled');
+    result.receivedHeld = received;
+  } finally {
+    lock.releaseLock();
+  }
 
+  // The alert is sent AFTER releasing. A UrlFetch to Telegram can take
+  // seconds, and holding the script lock across it would stall every other
+  // request in the business for no benefit.
   if (received > 0) {
     sendTelegram_(ownerChat_(),
       '⚠️ <b>Cancelled order still holds the customer’s money</b>\n' +
@@ -1372,13 +1399,27 @@ function recentLedger_(limit) {
 }
 
 /** Moves an order one step along the kitchen pipeline. */
+/*
+ * Reads the current status and writes the next one under ONE lock.
+ *
+ * Reading first and then calling a locked writer is the shape that let two
+ * taps on "Paid" both record a full settlement. Harmless here — two taps land
+ * on the same next status — but the shape is the bug, so it does not get to
+ * stay in the codebase where the next person copies it.
+ */
 function advanceOrderStatus_(orderId) {
-  var current = orderStatus_(orderId);
-  var next = nextStatus_(current);
-  if (!next) throw new Error('Order is already ' + current + '.');
-  var res = setOrderStatus_(orderId, next);
-  res.previousStatus = current;
-  return res;
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var current = orderStatus_(orderId);
+    var next = nextStatus_(current);
+    if (!next) throw new Error('Order is already ' + current + '.');
+    var res = setOrderStatusHeld_(orderId, next);
+    res.previousStatus = current;
+    return res;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function nextStatus_(current) {
@@ -2015,11 +2056,14 @@ function syncOrderMoney_(orderId) {
     var balance = total - received;
     var status = received <= 0 ? 'Unpaid' : (balance > 0 ? 'Part paid' : (balance < 0 ? 'Overpaid' : 'Paid'));
 
-    sheet.getRange(i + 1, COL.ADVANCE + 1).setValue(received);
-    sheet.getRange(i + 1, COL.BALANCE + 1).setValue(balance);
-    sheet.getRange(i + 1, COL.PAYMENT + 1).setValue(status);
+    // Written as adjacent blocks rather than five separate setValue calls.
+    // Each call is a round trip to Sheets, and slow responses are what made
+    // Telegram retry the webhook until one /cash produced a report a minute.
+    // Only genuinely adjacent columns are grouped, so nothing outside the
+    // money columns is touched. COL asserts the adjacency below.
+    sheet.getRange(i + 1, COL.ADVANCE + 1, 1, 2).setValues([[received, balance]]);
+    sheet.getRange(i + 1, COL.PAYMENT + 1, 1, 2).setValues([[status, nowStr_()]]);
     if (balance <= 0 && !data[i][COL.PAID_AT]) sheet.getRange(i + 1, COL.PAID_AT + 1).setValue(nowStr_());
-    sheet.getRange(i + 1, COL.UPDATED + 1).setValue(nowStr_());
 
     return { orderId: orderId, total: total, received: received, balance: balance, paymentStatus: status };
   }

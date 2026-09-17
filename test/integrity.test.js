@@ -100,4 +100,20 @@ module.exports = function (t) {
   t.check('the alert names the failing job', SENT.some(m => /someJob/.test(m.payload.text || '')));
   t.check('the alert quotes the error', SENT.some(m => /kaboom/.test(m.payload.text || '')));
   t.check('nothing is re-reported on the next run', /no new errors/.test(reportNewErrors()));
+
+  t.section('Batched money writes depend on these columns staying adjacent');
+  // syncOrderMoney_ writes Received/Balance and Payment Status/Updated as two
+  // adjacent blocks instead of five round trips to Sheets. That is only correct
+  // while the columns really are neighbours — reorder COL and the writes would
+  // land silently in the wrong cells, on money.
+  t.check('Balance Due sits immediately after Received',
+    COL.BALANCE === COL.ADVANCE + 1, COL.ADVANCE + ' -> ' + COL.BALANCE);
+  t.check('Updated At sits immediately after Payment Status',
+    COL.UPDATED === COL.PAYMENT + 1, COL.PAYMENT + ' -> ' + COL.UPDATED);
+  t.check('and the headers agree with the indexes',
+    ORDER_HEADERS[COL.ADVANCE] === 'Received' &&
+    ORDER_HEADERS[COL.BALANCE] === 'Balance Due' &&
+    ORDER_HEADERS[COL.PAYMENT] === 'Payment Status' &&
+    ORDER_HEADERS[COL.UPDATED] === 'Updated At',
+    [COL.ADVANCE, COL.BALANCE, COL.PAYMENT, COL.UPDATED].map(i => ORDER_HEADERS[i]).join(', '));
 };

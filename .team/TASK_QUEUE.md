@@ -437,6 +437,56 @@ that actually matters: after four retries the advice appears **once**, not four 
 
 ---
 
+## 🔴 Task 20: F-07, F-08, F-09 — the last three audit findings
+- **Assignee:** Claude Code
+- **Status:** `[READY_FOR_AUDIT]`
+- **Trigger:** Umair approved clearing the remaining low findings.
+
+### F-07 — read-then-write outside the lock
+`advanceOrderStatus_` read the current status, and `cancelOrder_` read the amount held, before
+calling a writer that took the lock. Harmless in both cases — two taps land on the same next
+status, and the cancel figure only feeds a notification — but it is the exact shape that let two
+taps on "Paid" each record a full settlement. Removed so the next person does not copy it.
+
+`setOrderStatusHeld_` split out, matching `recordPaymentHeld_`. `cancelOrder_` holds the lock for
+the read and the write and **releases before sending the Telegram alert** — a UrlFetch can take
+seconds, and holding the script lock across it would stall every other request in that business
+for no benefit.
+
+### F-08 — five round trips to write four money cells
+`syncOrderMoney_` issued five separate `setValue` calls. Each is a round trip, and slow responses
+are what made Telegram retry the webhook until one `/cash` produced a report a minute. Now two
+`setValues` over genuinely adjacent columns plus the conditional `Paid At`.
+
+**This introduced a dependency worth naming:** the batching is only correct while
+`Received`/`Balance Due` and `Payment Status`/`Updated At` remain neighbours. Reorder `COL` and
+the writes land silently in the wrong cells, on money. `test/integrity.test.js` now asserts the
+adjacency *and* that the headers match the indexes.
+
+### F-09 — the check string sorted by line, not by field name
+Recorded as "correct by accident". It is worse than that: sorting assembled `key=value` lines
+matches key order for everything Telegram sends today only because `=` sorts below the letters
+and underscores they use. It **breaks** when one field name prefixes another and the extra
+character sorts below `=` — a digit or a hyphen. The longer name then sorts first by line and
+second by key, the hash never matches, and the symptom is indistinguishable from a wrong bot
+token: *"Sign-in data failed verification"*, with nothing to say which.
+
+That is precisely the dead end that cost three days on F-03. Now sorted by key.
+
+### Tests
+**497 checks**, up from 491. The F-09 test was verified to fail against the old implementation
+before being kept — a regression test that passes both before and after proves nothing. Reverted
+the sort, watched it go red, restored it.
+
+### For the auditor
+- 🟠 **Needs a redeploy of both instances** to take effect (`2026-09-18.3`). Not urgent — none of
+  these three affects a live order. `node tools/instances.js` will show STALE until then, which
+  is the tool working as intended rather than a fault.
+- ⚪ The GET read routes are still present deliberately. They are dead weight now, but they are
+  also the rollback path for a change that is one day old in production.
+
+---
+
 ## 🚀 Active Sprint: Security Hardening & Internal Pilot
 
 ### Task 1: Fix IP Protection (Standalone Script Mode)

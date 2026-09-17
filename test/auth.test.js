@@ -274,4 +274,26 @@ module.exports = function (t) {
   t.check('anonymous health over GET still answers', anon.status === 'ok');
   t.check('and still reports the version for the fleet check', anon.version === VERSION);
 
+
+  t.section('The check string is sorted by field name, not by assembled line');
+  // Sorting the "key=value" lines gives the same order as sorting keys for
+  // every field Telegram sends today, because "=" sorts below the letters and
+  // underscores they use. It breaks when one field name is a prefix of another
+  // AND the extra character sorts BELOW "=" — a digit or a hyphen. Then the
+  // longer name sorts first by line and second by key, the hash never matches,
+  // and the symptom is identical to a wrong bot token: "failed verification",
+  // with nothing to say which.
+  const prefixPair = launch({ ab: 'one', ab2: 'two' });
+  const byKey = validateInitData_(prefixPair);
+  t.check('a field name that prefixes another still verifies', byKey.ok === true,
+    byKey.reason || 'ok');
+
+  // Prove the trap is real rather than hypothetical: sorted as whole lines,
+  // "ab2=two" would come before "ab=one" because "2" sorts below "=".
+  const lines = ['ab=one', 'ab2=two'];
+  t.check('sorting lines really does reorder that pair',
+    lines.slice().sort().join('|') !== ['ab', 'ab2'].map(k => k + '=' + (k === 'ab' ? 'one' : 'two')).join('|'),
+    lines.slice().sort().join('|'));
+
+  t.check('an ordinary launch is unaffected', validateInitData_(launch()).ok === true);
 };
