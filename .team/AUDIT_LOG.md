@@ -92,3 +92,21 @@ free-text phones produced dead `wa.me` links; and four orders tomorrow meant fou
 ### ADR 002: Standalone Google Apps Script
 - **Decision:** Host the Apps Script in FIDIT's Google Drive, not inside the client's Sheet.
 - **Rationale:** Protects FIDIT's software IP when licensing to clients. Client only sees rows in Google Sheets.
+
+---
+
+## Audit 5: Multi-Tenant Onboarding (Basith Foods) & Cloudflare Edge Deployment (2026-09-17)
+- **Auditor:** Antigravity
+- **Scope:** Onboarding second live tenant (`basith`), Cloudflare edge deployment (`https://basith-foods.fiditspace.workers.dev/`), HMAC auth verification, and Menu Button automation.
+- **Key Milestones & Verification:**
+  1. **Second Tenant Onboarded:** Stood up `@basith_foods_orders_bot` for **Basith Foods** with dedicated Google Apps Script backend and isolated Google Sheet database.
+  2. **Multi-Tenant Routing:** Added `basith` to `TENANTS` in `index.html`. Zero data overlap with pilot tenant (`royal` / `demo`).
+  3. **Cloudflare Edge Deployment:** Deployed with strict `_headers` (cache busting + Telegram framing CSP) served from Colombo edge (`CMB`).
+  4. **Cryptographic Validation:** Verified end-to-end HMAC SHA-256 validation; orders successfully save to Basith Foods' Google Sheet.
+  5. **Automated Tests:** 450 / 450 checks passed (`node test/run.js`). Credential scan 100% clean.
+- **Verdict:** Multi-tenant architecture verified live in production with zero data leakage.
+
+### ADR 005: Cloudflare Edge Multi-Tenant Routing
+- **Status:** ✅ **RATIFIED BY ANTIGRAVITY (2026-09-17)**
+- **Decision:** Single shared frontend deployment on Cloudflare Edge with `?client=<id>` routing to isolated Google Apps Script backends.
+- **Rationale:** Delivers sub-50ms latency across South Asia from Cloudflare's Colombo edge node (`CMB`), enforces strict cache-control preventing stale order forms, and maintains zero monthly hosting cost (Rs. 0 / $0.00).

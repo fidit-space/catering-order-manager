@@ -384,3 +384,17 @@ copy-paste mistake that would point two businesses at one Sheet), the on-screen 
   - Authored `.team/CLOUDFLARE_RESEARCH.md` documenting hybrid architecture, mobile edge performance in South Asia, and multi-tenant setup.
   - Created `_headers` configuring `Cache-Control: no-cache, no-store, must-revalidate` and Telegram WebApp iframe embedding CSP.
 
+---
+
+## 🟢 Task 16: Onboard Basith Foods as Second Tenant
+- **Assignee:** Antigravity & Umair
+- **Status:** `[DONE]`
+- **Resolution:**
+  - Registered `@basith_foods_orders_bot` (id `8929888086`) for Basith Foods.
+  - Deployed dedicated Google Apps Script backend and connected Google Sheets database.
+  - Added `basith` tenant routing to `index.html` with zero cross-tenant contamination.
+  - Deployed frontend to Cloudflare Edge (`https://basith-foods.fiditspace.workers.dev/`) with Colombo `CMB` routing.
+  - Configured Telegram Bot Menu Button and bot commands via Telegram Bot API.
+  - Audited live order creation; HMAC cryptographic authentication verified working end-to-end.
+
+
