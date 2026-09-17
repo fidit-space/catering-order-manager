@@ -218,4 +218,60 @@ module.exports = function (t) {
 
   delete PROPS.ALLOW_BROWSER_ACCESS;
 
+
+  t.section('Reads work over POST as well as GET, gated identically');
+  // initData in a query string is a 24-hour replay credential written into
+  // execution logs, proxies and referrers. Writes have always used the body;
+  // reads are moving there. Both verbs are accepted for one release because
+  // the frontend reaches the edge in a minute while each business's backend is
+  // a manual paste — switching in one go would break reads for a live client.
+  const READS = ['menu', 'unpaid', 'money', 'ledger', 'orders', 'customer'];
+
+  function viaGet(action, extra) {
+    return JSON.parse(doGet({ parameter: Object.assign(
+      { action: action, key: publicKey, initData: launch() }, extra || {}) }).getContent());
+  }
+  function viaPost(action, extra) {
+    return JSON.parse(doPost({ postData: { contents: JSON.stringify(Object.assign(
+      { action: action, key: publicKey, initData: launch() }, extra || {})) } }).getContent());
+  }
+
+  READS.forEach(function (action) {
+    const got = viaPost(action);
+    t.check(action + ' is served over POST', got.status === 'ok',
+      JSON.stringify(got).slice(0, 90));
+    // Same route, same data — not a second implementation that can drift.
+    t.check(action + ' returns the same keys either way',
+      Object.keys(got).sort().join(',') === Object.keys(viaGet(action)).sort().join(','),
+      Object.keys(got).sort().join(',') + '  vs  ' + Object.keys(viaGet(action)).sort().join(','));
+  });
+
+  t.check('parameters are read from the body, not only the query string',
+    viaPost('ledger', { limit: 1 }).entries.length <= 1,
+    String(viaPost('ledger', { limit: 1 }).entries.length));
+
+  // The whole point is that access does not loosen by changing verb.
+  READS.forEach(function (action) {
+    const keyOnly = JSON.parse(doPost({ postData: { contents: JSON.stringify(
+      { action: action, key: publicKey }) } }).getContent());
+    t.check(action + ' over POST still refuses a key-only caller', keyOnly.status === 'error',
+      JSON.stringify(keyOnly).slice(0, 80));
+  });
+
+  t.check('a read over POST leaks nothing to a key-only caller',
+    !/customerPhone|customerName/.test(JSON.stringify(JSON.parse(doPost({ postData: { contents:
+      JSON.stringify({ action: 'orders', key: publicKey }) } }).getContent()))));
+
+  t.check('GET reads are unchanged, so an un-redeployed frontend keeps working',
+    viaGet('menu').status === 'ok' && Array.isArray(viaGet('menu').menu));
+  t.check('an unknown action is still an error over POST',
+    viaPost('noSuchThing').status === 'error', JSON.stringify(viaPost('noSuchThing')).slice(0, 80));
+  t.check('and over GET', viaGet('noSuchThing').status === 'error');
+
+  // Anonymous GET health is what tools/instances.js relies on; it must not
+  // have been narrowed by sharing the read router.
+  const anon = JSON.parse(doGet({ parameter: { action: 'health' } }).getContent());
+  t.check('anonymous health over GET still answers', anon.status === 'ok');
+  t.check('and still reports the version for the fleet check', anon.version === VERSION);
+
 };

@@ -42,7 +42,7 @@ var DEPLOYMENT_URL =
  * already lost days to a deployment quietly serving an old version. /status
  * prints this, so the answer takes five seconds.
  */
-var VERSION = '2026-09-18.1';
+var VERSION = '2026-09-18.2';
 
 var TZ = 'Asia/Colombo';          // Business timezone (UTC+05:30, no DST)
 var CURRENCY = 'Rs.';             // Displayed in Telegram messages
@@ -907,26 +907,58 @@ function doGet(e) {
       requireTelegramAuth_(p.initData, action);   // the real gate
     }
 
-    switch (action) {
-      case 'health':   return json_(health_(p.key, p.initData));
-      case 'menu':     return json_({ status: 'ok', menu: readMenu_(), statusFlow: STATUS_FLOW, statusIcons: STATUS_ICON });
-      case 'unpaid':   return json_({ status: 'ok', orders: readUnpaid_() });
-      case 'money':    return json_({
-                         status: 'ok',
-                         today: summariseMoney_(todayStr_(), todayStr_()),
-                         month: summariseMoney_(monthStartStr_(), todayStr_()),
-                         aging: receivablesAging_(),
-                         categories: EXPENSE_CATEGORIES,
-                         methods: PAYMENT_METHODS
-                       });
-      case 'ledger':   return json_({ status: 'ok', entries: recentLedger_(Number(p.limit) || 40) });
-      case 'orders':   return json_({ status: 'ok', orders: readOrders_(p.from, p.to, p.limit) });
-      case 'customer': return json_({ status: 'ok', customer: findCustomer_(p.phone) });
-      default:         return json_({ status: 'error', message: 'Unknown action: ' + action });
-    }
+    var read = readAction_(action, p);
+    if (read) return json_(read);
+    return json_({ status: 'error', message: 'Unknown action: ' + action });
   } catch (err) {
     logError_('doGet', err);
     return json_({ status: 'error', message: String(err.message || err) });
+  }
+}
+
+/*
+ * The read routes, shared by doGet and doPost.
+ *
+ * WHY BOTH. initData travels in the query string on a GET, and it carries the
+ * owner's Telegram id, name and username — and its hash is a replay
+ * credential good for 24 hours. A query string is the one part of an HTTPS
+ * request that reliably gets written down: execution logs, proxies,
+ * referrers. Writes have always put it in the body; reads should too.
+ *
+ * Accepting reads on BOTH verbs is the first half of that move, on purpose.
+ * The frontend deploys to the edge in about a minute while each business's
+ * backend is a manual paste, so switching the frontend to POST in the same
+ * release would break every read for any business not yet redeployed — an
+ * outage for a live client. This half changes no behaviour: GET keeps working
+ * exactly as before, POST merely gains the same routes. The frontend switches
+ * only once `node tools/instances.js` reports every instance current.
+ *
+ * `source` is e.parameter on a GET and the parsed body on a POST; the fields
+ * read from it are named identically either way. Returns null for anything
+ * that is not a read, so the caller can fall through to its own routing.
+ *
+ * Authorisation is NOT done here. Both callers gate on the same action name
+ * through requireTelegramAuth_ before calling this, so the two verbs cannot
+ * drift apart on access.
+ */
+function readAction_(action, source) {
+  var p = source || {};
+  switch (action) {
+    case 'health':   return health_(p.key, p.initData);
+    case 'menu':     return { status: 'ok', menu: readMenu_(), statusFlow: STATUS_FLOW, statusIcons: STATUS_ICON };
+    case 'unpaid':   return { status: 'ok', orders: readUnpaid_() };
+    case 'money':    return {
+                       status: 'ok',
+                       today: summariseMoney_(todayStr_(), todayStr_()),
+                       month: summariseMoney_(monthStartStr_(), todayStr_()),
+                       aging: receivablesAging_(),
+                       categories: EXPENSE_CATEGORIES,
+                       methods: PAYMENT_METHODS
+                     };
+    case 'ledger':   return { status: 'ok', entries: recentLedger_(Number(p.limit) || 40) };
+    case 'orders':   return { status: 'ok', orders: readOrders_(p.from, p.to, p.limit) };
+    case 'customer': return { status: 'ok', customer: findCustomer_(p.phone) };
+    default:         return null;
   }
 }
 
@@ -1127,8 +1159,15 @@ function doPost(e) {
       case 'advanceStatus': return json_(advanceOrderStatus_(body.orderId));
       case 'setStatus':     return json_(setOrderStatus_(body.orderId, body.newStatus));
       case 'markPaid':      return json_(markOrderPaid_(body.orderId, body.method, body.actorId));
-      default: return json_({ status: 'error', message: 'Unknown action: ' + action });
     }
+
+    // Reads are served here too, so the Mini App can stop putting a 24-hour
+    // replay credential in the query string. See readAction_ for why this
+    // lands one release ahead of the frontend change.
+    var read = readAction_(action, body);
+    if (read) return json_(read);
+
+    return json_({ status: 'error', message: 'Unknown action: ' + action });
   } catch (err) {
     logError_('doPost', err);
     return json_({ status: 'error', message: String(err.message || err) });

@@ -334,6 +334,56 @@ paths while still asserting counts stay gated; `tenancy` covers the fleet check 
 
 ---
 
+## 🔴 Task 18: F-06 step 1 — reads accepted over POST
+- **Assignee:** Claude Code
+- **Status:** `[READY_FOR_AUDIT]`
+- **Trigger:** Audit 4 finding **F-06**, staged for a safe rollout.
+
+### The finding
+`apiGet` puts `initData` in the query string on every read. It carries the owner's Telegram id,
+name and username, and its `hash` is a replay credential valid for 24 hours. A query string is
+the one part of an HTTPS request that reliably gets written down — execution logs, proxies,
+referrers. Writes have always put it in the body.
+
+### Why this is two releases, not one
+The frontend reaches the Cloudflare edge in about a minute. Each business's backend is a manual
+paste. Switching the frontend to POST in the same release would break **every read for any
+business not yet redeployed** — an outage for a paying client, caused by a privacy fix.
+
+| Release | Change | Risk |
+|---|---|---|
+| **This one** | Backend accepts reads on POST *as well as* GET | None. GET behaviour is untouched; POST gains routes nothing calls yet. |
+| **Next** | Frontend switches reads to POST | Safe only once `node tools/instances.js` reports every instance current. |
+
+Task 17 is what makes step 2 verifiable rather than hopeful.
+
+### Built
+`readAction_(action, source)` holds the seven read routes and is called by **both** entry points.
+`source` is `e.parameter` on a GET and the parsed body on a POST, with identically named fields,
+so there is one implementation rather than two that can drift.
+
+Authorisation deliberately stays in the callers: both gate on the same action name through
+`requireTelegramAuth_` before routing, so the two verbs cannot diverge on access. Tested
+explicitly — every read over POST refuses a key-only caller, exactly as over GET.
+
+### Tests
+**482 checks**, up from 457; `auth` grew 53 → 78. Every read is exercised over POST, asserted to
+return the same keys as its GET counterpart, and asserted to refuse a key-only caller. Two
+regression guards matter most: **GET reads are unchanged**, so a frontend that has not been
+redeployed keeps working, and **anonymous GET health still reports the version**, which is what
+`tools/instances.js` depends on.
+
+### For the auditor
+- ⚠️ **Do not merge step 2 until both instances report current.** That is the whole point of
+  splitting this.
+- 🟠 `health` over POST requires a verified launch, unlike over GET. Deliberate: the anonymous
+  path stays on GET because that is what the fleet check uses, and nothing needs anonymous health
+  over POST.
+- ⚪ Once step 2 ships and both instances are confirmed, the GET read routes can be removed
+  entirely. Until then they are the fallback that makes the rollout safe.
+
+---
+
 ## 🚀 Active Sprint: Security Hardening & Internal Pilot
 
 ### Task 1: Fix IP Protection (Standalone Script Mode)
