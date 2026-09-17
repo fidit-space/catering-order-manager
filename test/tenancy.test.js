@@ -128,4 +128,24 @@ module.exports = function (t) {
   t.check('it appears exactly once in the backend, as its definition',
     (fs.readFileSync(path.join(__dirname, '..', 'backend', 'google_apps_script.js'), 'utf8')
       .match(/var VERSION = /g) || []).length === 1);
+
+  t.section('The fleet check reads the real files');
+  // Each business is a separate manual deployment that Apps Script cannot
+  // update remotely, so the only thing standing between "two tenants" and
+  // "which of these is stale?" is this check reading both files correctly.
+  const fleet = require('../tools/instances.js');
+
+  const parsed = fleet.readTenants();
+  t.check('it finds every configured business',
+    Object.keys(parsed).sort().join(',') === Object.keys(bare.tenants).sort().join(','),
+    Object.keys(parsed).join(','));
+  t.check('and each one carries a usable URL',
+    Object.keys(parsed).every(id => /\/exec$/.test(parsed[id].url)),
+    Object.keys(parsed).map(id => parsed[id].url).join(' | '));
+  t.check('a business onboarded later cannot be missed — one source of truth',
+    Object.keys(parsed).length === Object.keys(bare.tenants).length,
+    Object.keys(parsed).length + ' vs ' + Object.keys(bare.tenants).length);
+
+  t.check('it reads the version the backend actually declares',
+    fleet.readExpectedVersion() === VERSION, fleet.readExpectedVersion() + ' vs ' + VERSION);
 };

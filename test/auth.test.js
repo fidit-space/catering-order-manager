@@ -137,6 +137,12 @@ module.exports = function (t) {
   const health = JSON.parse(doGet({ parameter: { action: 'health' } }).getContent());
   t.check('anonymous health check works', health.status === 'ok');
   t.check('but reveals no order counts', health.totalOrders === undefined);
+  // The version is open on purpose. /status can report it too, but /status
+  // answers over Telegram, and a dead webhook is the fault you most need to
+  // diagnose — so the only tool that names it is silenced by it.
+  t.check('it does report the running version', health.version === VERSION, String(health.version));
+  t.check('which is a real marker, not a placeholder',
+    typeof VERSION === 'string' && VERSION.length > 0, String(VERSION));
 
   // API_KEY is published in index.html, so gating counts on it gated them on
   // nothing — order totals were readable by anyone who viewed source.
@@ -149,6 +155,8 @@ module.exports = function (t) {
   const authed = JSON.parse(doGet({ parameter: { action: 'health', key: publicKey, initData: launch() } }).getContent());
   t.check('a verified Telegram launch does see the counts', typeof authed.totalOrders === 'number',
     JSON.stringify(authed));
+  t.check('and the version survives the authenticated path too', authed.version === VERSION,
+    String(authed.version));
 
   t.section('The browser escape hatch is off by default and narrow when on');
   PROPS.ALLOW_BROWSER_ACCESS = 'YES';

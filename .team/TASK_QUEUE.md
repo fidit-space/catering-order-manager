@@ -293,6 +293,47 @@ copy-paste mistake that would point two businesses at one Sheet), the on-screen 
 
 ---
 
+## 🔴 Task 17: A deployment's version, readable without Telegram
+- **Assignee:** Claude Code
+- **Status:** `[READY_FOR_AUDIT]`
+- **Trigger:** Umair: *"do build what need to be build for the best"*
+
+### The problem
+`/status` reports which build an instance is running — over Telegram. A dead webhook is the fault
+most worth diagnosing, so the one tool that names it is the tool the fault disables. Every
+diagnosis between 9 and 16 September was a relay of screenshots for exactly this reason.
+
+Task 16 doubled the cost: two businesses, each a separate manually-pasted Apps Script deployment
+that Apps Script cannot update remotely. "Which of these is stale?" is now routine.
+
+### Built
+| Change | Why |
+|---|---|
+| `health_` returns `version: VERSION` | `?action=health` is already open. A version string discloses nothing — the repo is public, so the code behind it is already readable — and order counts still require a verified launch. |
+| `tools/instances.js` | Reads the `TENANTS` map out of `index.html` and the `VERSION` out of the backend, probes every business's health endpoint, and reports current / STALE / NO VERSION / UNREACHABLE. Exits non-zero. No dependencies, matching `test/run.js`. |
+| `CLIENT_ONBOARDING.md` corrected to Cloudflare | The checklist still said GitHub Pages throughout, so the next onboarding would have set `MINI_APP_URL` and the Menu Button to the wrong host. Now defers to `TEAM_STATE.md` as the authority for live URLs rather than hard-coding one that goes stale. |
+
+Verified against production on 2026-09-18: both instances reachable, both reporting **NO
+VERSION** — correct, since both predate this change. The tool proving itself before it is useful.
+
+### Tests
+**457 checks**, up from 450. `auth` covers the version on both the anonymous and authenticated
+paths while still asserting counts stay gated; `tenancy` covers the fleet check reading the real
+`index.html` and the real backend, so a business onboarded later cannot be silently skipped.
+
+### For the auditor
+- 🟠 **`TEAM_STATE.md` line 11 lists `?client=royal` as a live route. It is not** — the tenant map
+  holds `demo` and `basith` only, so `?client=royal` falls back to `demo`. Left uncorrected here
+  because TEAM_STATE is Antigravity's authority; flagging rather than editing.
+- 🟠 The value lands only **after the next redeploy** of each instance, since both currently
+  predate it. That redeploy is needed anyway.
+- ⚪ Still open from Audit 4: **F-06**, `initData` travelling in the URL query string on every
+  read. The safe rollout depends on this task — the backend must accept reads over POST and be
+  confirmed current on *both* instances before the frontend switches, or a frontend push would
+  break reads for a live client. `tools/instances.js` is what makes that confirmable.
+
+---
+
 ## 🚀 Active Sprint: Security Hardening & Internal Pilot
 
 ### Task 1: Fix IP Protection (Standalone Script Mode)

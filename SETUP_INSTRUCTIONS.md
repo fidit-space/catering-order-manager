@@ -127,8 +127,14 @@ Read the summary it returns. Run it again and it should say *"Nothing to migrate
 
 **Send `/status` to the bot.** That is the whole health check, and it works from a phone.
 
-If the bot is not answering yet, run **diagnose** from the function dropdown instead — same
-report, delivered to the execution log as well as to Telegram.
+If the bot is not answering yet, you have two options that do not need Telegram:
+
+- Open `<your /exec url>?action=health` in a browser. It reports the **version** the deployment
+  is running, with no sign-in — enough to tell a stale paste from a wiring problem.
+- Run **diagnose** from the Apps Script function dropdown — the same full report, delivered to
+  the execution log as well as to Telegram.
+
+With more than one business, `node tools/instances.js` checks them all at once.
 
 The report covers the things that have gone wrong silently before:
 

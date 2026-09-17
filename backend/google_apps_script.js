@@ -42,7 +42,7 @@ var DEPLOYMENT_URL =
  * already lost days to a deployment quietly serving an old version. /status
  * prints this, so the answer takes five seconds.
  */
-var VERSION = '2026-09-11.1';
+var VERSION = '2026-09-18.1';
 
 var TZ = 'Asia/Colombo';          // Business timezone (UTC+05:30, no DST)
 var CURRENCY = 'Rs.';             // Displayed in Telegram messages
@@ -937,8 +937,22 @@ function doGet(e) {
  * them on nothing — order and customer totals were readable by anyone who
  * viewed source.
  */
+/*
+ * The version is returned WITHOUT authentication, deliberately.
+ *
+ * /status reports which build an instance is running, but it answers over
+ * Telegram — and a dead webhook is the fault you most need to diagnose, so the
+ * tool is disabled by the problem it exists to name. Every business is also a
+ * separate manually-pasted deployment that Apps Script cannot update remotely,
+ * so "is that one stale?" is a routine question with two tenants and a worse
+ * one with ten.
+ *
+ * A version string discloses nothing: the repository is public, so the code
+ * behind it is already readable by anyone. Order counts still require a
+ * verified Telegram launch.
+ */
 function health_(key, initData) {
-  var out = { status: 'ok', timestamp: nowStr_(), timezone: TZ };
+  var out = { status: 'ok', version: VERSION, timestamp: nowStr_(), timezone: TZ };
   try {
     requireKey_(key);
     requireTelegramAuth_(initData, 'health');
