@@ -384,10 +384,13 @@ redeployed keeps working, and **anonymous GET health still reports the version**
 
 ---
 
-## 🔴 Task 19: F-06 step 2 — the credential leaves the URL
+## 🟢 Task 19: F-06 step 2 — the credential leaves the URL
 - **Assignee:** Claude Code
-- **Status:** `[READY_FOR_AUDIT]`
+- **Status:** `[READY_FOR_AUDIT]` — **verified live on 2026-09-18**
 - **Trigger:** Task 18 shipped; both instances confirmed on `2026-09-18.2` before this was merged.
+- **Live verification:** Umair confirmed the Mini App loads and works after the switch. This was
+  the one thing the suite could not prove — tests assert the shape of the request, but only a
+  real launch proves Telegram still signs what the backend expects.
 
 ### Closed
 `initData` no longer travels in a query string. Every read is a POST with the credential in the
