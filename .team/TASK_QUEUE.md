@@ -440,6 +440,10 @@ that actually matters: after four retries the advice appears **once**, not four 
 ## 🔴 Task 20: F-07, F-08, F-09 — the last three audit findings
 - **Assignee:** Claude Code
 - **Status:** `[READY_FOR_AUDIT]`
+- **Record:** the published audit was brought current on 2026-09-18 — all nine findings closed,
+  live state re-verified by probe, and **two entries corrected rather than re-badged**: F-03 had
+  left a hypothesis standing as its explanation, and F-09 was filed as a stylistic nicety when it
+  was a fourth way to produce the identical undiagnosable authentication failure.
 - **Trigger:** Umair approved clearing the remaining low findings.
 
 ### F-07 — read-then-write outside the lock
