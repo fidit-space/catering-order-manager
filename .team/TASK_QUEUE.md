@@ -491,6 +491,62 @@ the sort, watched it go red, restored it.
 
 ---
 
+## 🔴 Task 21: One-command deployment, and a blocker on Task 8
+- **Assignee:** Claude Code
+- **Status:** `[READY_FOR_AUDIT]`
+- **Trigger:** Umair chose deployment automation as the next piece of work.
+
+### Why
+Nearly every incident this project has had traces to a human pasting 130KB into an editor and
+clicking Deploy: a `/dev` URL registered silently, *New deployment* orphaning the webhook, a
+property saved as `/exec`, a half paste, two instances drifting apart. Tolerable at two
+businesses; it is the thing that breaks at five.
+
+### Built — `tools/deploy.js`
+Apps Script REST API over plain `fetch` and node's `crypto`. **No npm package, so ADR 001
+holds** — `clasp` would do the same job and is forbidden for exactly that reason.
+
+`--auth` (loopback OAuth, since Google removed the paste-a-code flow in 2022) · `--only <id>` ·
+`--dry-run`. Deploys **sequentially on purpose**: if the first business breaks, the second is
+still on the last known-good build while it is investigated. Runs `instances.js` afterwards, so
+the last thing on screen is what is actually serving rather than what was sent.
+
+### What it refuses to do
+| Refusal | Why |
+|---|---|
+| A project with more than one `.gs` file | `updateContent` replaces **every** file. It fetches existing content and swaps only the one script — blind replacement would take `appsscript.json` with it, and the timezone and OAuth scopes with that. |
+| Moving the `@HEAD` deployment | That is the `/dev` URL Telegram cannot reach. Moving it looks like a successful deploy and changes nothing. |
+| More than one versioned deployment | Someone used *New deployment* at some point; it stops rather than guessing which is live. |
+
+### The cost, stated plainly
+A Google OAuth **refresh token on disk** — the most powerful credential this repo's tooling
+touches, able to rewrite the Apps Script projects it is scoped to. `tools/deploy.local.json`,
+gitignored, never printed. Tests assert the ignore rule holds and that no committed file exists.
+The manual paste remains fully supported for anyone who would rather not hold that token.
+
+### 🟠 Task 8 is blocked, and the blocker is concrete
+Umair chose **make the repo private**. Do not do it yet:
+
+- The repo is **org-owned**, and GitHub Pages on a private org repo needs **Team or Enterprise**.
+  The org shows no such plan, so `fidit-space.github.io/catering-order-manager/` — recorded in
+  `TEAM_STATE.md` as the **fallback frontend** — will start returning 404.
+- Worse: `backend/google_apps_script.js:349` falls back to that exact URL when `MINI_APP_URL` is
+  unset. **If FIDIT Demo has no `MINI_APP_URL` property, going private breaks its own Mini App
+  button.** Basith Foods sets one, so it is unaffected.
+
+Order to do it safely: set `MINI_APP_URL` on every instance → confirm no Menu Button points at
+`github.io` → confirm Cloudflare still builds from a private repo → then flip. Also worth noting
+privacy hides **nothing** about client data: the deployment URLs and API keys are public in the
+served page regardless, and HMAC is what protects the Sheets. The decision is about FIDIT's IP.
+
+### Tests
+**507 checks**, up from 497. Ten new ones cover the safety properties rather than the network
+calls: the credential is ignored and absent, the token is never printed, a multi-file project is
+refused, the manifest is preserved by editing fetched content in place, only a versioned
+deployment is moved, and a dry run returns without writing.
+
+---
+
 ## 🚀 Active Sprint: Security Hardening & Internal Pilot
 
 ### Task 1: Fix IP Protection (Standalone Script Mode)

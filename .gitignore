@@ -21,6 +21,12 @@ npm-debug.log*
 .clasp.json
 .claspignore
 
+# Deployment credentials. Holds a Google OAuth refresh token that can rewrite
+# the Apps Script projects — the most powerful credential this repo's tooling
+# touches. It must never be committed. Revoke at myaccount.google.com/permissions.
+tools/deploy.local.json
+*.local.json
+
 # Secrets live in Apps Script > Project Settings > Script Properties,
 # never in backend/google_apps_script.js. If you ever paste a bot token
 # into that file for testing, clear it before committing.

@@ -89,6 +89,10 @@ Then add two more in **⚙️ Project Settings → Script Properties**:
 **Deploy → New deployment → Web app** · Execute as **Me** · Access **Anyone** → copy the `/exec`
 URL.
 
+> If you use `tools/deploy.js`, add the new business's **Script ID** to `scriptIds` in
+> `tools/deploy.local.json` at the same time — otherwise it is in `TENANTS`, gets checked by the
+> fleet check, and is quietly skipped by every deploy.
+
 ## 5. Add them to the page (2 min)
 
 In `index.html`, add an entry to `TENANTS` — the `basith` entry is the worked example:
@@ -156,8 +160,18 @@ Apps Script has no way to push an update to a deployment, and the tool that auto
 
 1. Bump `VERSION` at the top of `backend/google_apps_script.js` — **CI fails the push if you
    forget**
-2. Redeploy each business: paste, **Deploy → Manage deployments → ✏️ → New version**
-3. Run the fleet check:
+2. Push it to every business:
+
+```
+node tools/deploy.js --dry-run     # say what it would do
+node tools/deploy.js --only demo   # one business first, out of habit
+node tools/deploy.js               # all of them
+```
+
+   One-time setup in `tools/DEPLOY_SETUP.md`. Without it, the manual route still works:
+   paste, then **Deploy → Manage deployments → ✏️ → New version**, per business.
+
+3. Confirm what is actually serving:
 
 ```
 $ node tools/instances.js
@@ -170,7 +184,8 @@ $ node tools/instances.js
 
 It reads the `TENANTS` map straight out of `index.html`, so a business you onboard tomorrow is
 checked without anyone remembering to add it, and exits non-zero if anything is stale or
-unreachable.
+unreachable. `deploy.js` runs it for you at the end, so the last thing you see is what is
+actually live rather than what was sent.
 
 `/status` on an individual bot reports the same `Version`, and is the right tool when you want the
 triggers and sheet state as well. But it answers over Telegram — so when a webhook is dead, the

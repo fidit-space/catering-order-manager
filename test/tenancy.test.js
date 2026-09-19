@@ -148,4 +148,41 @@ module.exports = function (t) {
 
   t.check('it reads the version the backend actually declares',
     fleet.readExpectedVersion() === VERSION, fleet.readExpectedVersion() + ' vs ' + VERSION);
+
+  t.section('The deploy tool cannot leak the token or guess at a project');
+  const fsx = require('fs');
+  const pathx = require('path');
+  const deploySrc = fsx.readFileSync(pathx.join(__dirname, '..', 'tools', 'deploy.js'), 'utf8');
+  const ignore = fsx.readFileSync(pathx.join(__dirname, '..', '.gitignore'), 'utf8');
+
+  // The config holds a Google refresh token that can rewrite the Apps Script
+  // projects — the most powerful credential this repo's tooling touches.
+  t.check('the credential file is gitignored',
+    /tools\/deploy\.local\.json/.test(ignore), 'deploy.local.json is NOT ignored');
+  t.check('no credential file is committed',
+    !fsx.existsSync(pathx.join(__dirname, '..', 'tools', 'deploy.local.json')),
+    'tools/deploy.local.json exists in the working tree — check it is not staged');
+  t.check('the tool never prints the token',
+    !/console\.log[^\n]*refreshToken|console\.log[^\n]*clientSecret/.test(deploySrc));
+
+  // updateContent replaces EVERY file. Swapping blindly would take
+  // appsscript.json with it, and the timezone and OAuth scopes with that.
+  t.check('it refuses a project with more than one script file',
+    /scripts\.length !== 1/.test(deploySrc));
+  t.check('it preserves the manifest by editing fetched content in place',
+    /projects\/' \+ scriptId \+ '\/content'/.test(deploySrc) && /files: files|\{ files \}/.test(deploySrc));
+
+  // @HEAD is the /dev URL Telegram cannot reach; moving it looks like success
+  // and changes nothing.
+  t.check('it only moves a versioned deployment, never @HEAD',
+    /versionNumber !== undefined/.test(deploySrc));
+  t.check('and refuses when more than one is versioned',
+    /live\.length !== 1/.test(deploySrc));
+
+  t.check('it deploys the same version the fleet check expects',
+    /readExpectedVersion/.test(deploySrc));
+  t.check('it reads the same tenant map as everything else',
+    /readTenants/.test(deploySrc));
+  t.check('a dry run changes nothing',
+    /if \(dryRun\)[\s\S]{0,200}return \{ skipped: true \}/.test(deploySrc));
 };

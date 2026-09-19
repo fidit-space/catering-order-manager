@@ -151,10 +151,11 @@ verifies Telegram's signature against **its own bot token**, so a launch signed 
 verify against another's backend.
 
 A change to `index.html` reaches every business on the next push. A change to the backend does
-**not** — Apps Script has no way to push an update, so each deployment is a manual paste. Run
-**`node tools/instances.js`** after redeploying: it reads the `TENANTS` map and reports which
-businesses are current and which are stale. CI fails a push that changes the backend without
-moving `VERSION`.
+not travel on its own — each business is a separate Apps Script deployment. **`node
+tools/deploy.js`** pushes it to all of them over the Apps Script REST API and reports what is
+actually serving; `tools/DEPLOY_SETUP.md` covers the one-time setup, and the manual paste still
+works without it. **`node tools/instances.js`** answers "who is stale?" on its own. CI fails a
+push that changes the backend without moving `VERSION`.
 
 The backend also reports `VERSION` on its open `?action=health` endpoint, so a deployment can be
 identified from a browser or a script even when its bot is not answering — which is precisely the
