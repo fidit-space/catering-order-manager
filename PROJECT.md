@@ -8,12 +8,12 @@ health: green
 owner: Umair
 priority: P1
 goal: "Deploy zero-cost mobile catering order manager & reminder system as Telegram Mini App on GitHub Pages backed by Google Sheets"
-metric: "0 / first live client deployment"
+metric: "2 live client tenants (FIDIT Demo & Basith Foods)"
 revenue_impact: med
 effort: low
-next_action: "Deploy Google Apps Script backend, link Google Sheets template, and publish GitHub Pages for client onboarding"
+next_action: "Redeploy backend 2026-09-18.3 to instances and maintain multi-tenant operations"
 blockers: []
-updated: 2026-09-17
+updated: 2026-09-23
 docs:
   - README.md
   - SETUP_INSTRUCTIONS.md

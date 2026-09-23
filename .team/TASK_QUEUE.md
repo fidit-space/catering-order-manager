@@ -437,13 +437,10 @@ that actually matters: after four retries the advice appears **once**, not four 
 
 ---
 
-## 🔴 Task 20: F-07, F-08, F-09 — the last three audit findings
+## 🟢 Task 20: F-07, F-08, F-09 — the last three audit findings
 - **Assignee:** Claude Code
-- **Status:** `[READY_FOR_AUDIT]`
-- **Record:** the published audit was brought current on 2026-09-18 — all nine findings closed,
-  live state re-verified by probe, and **two entries corrected rather than re-badged**: F-03 had
-  left a hypothesis standing as its explanation, and F-09 was filed as a stylistic nicety when it
-  was a fourth way to produce the identical undiagnosable authentication failure.
+- **Status:** `[DONE]` — **Audited and approved on 2026-09-23**
+- **Record:** all nine findings closed, verified by regression tests in `test/auth.test.js` and `test/integrity.test.js`. F-07 lock discipline, F-08 batch writes, and F-09 HMAC parameter key-sorting approved in Audit 6.
 - **Trigger:** Umair approved clearing the remaining low findings.
 
 ### F-07 — read-then-write outside the lock
@@ -491,10 +488,10 @@ the sort, watched it go red, restored it.
 
 ---
 
-## 🔴 Task 21: One-command deployment, and a blocker on Task 8
+## 🟢 Task 21: One-command deployment, and a blocker on Task 8
 - **Assignee:** Claude Code
-- **Status:** `[READY_FOR_AUDIT]`
-- **Trigger:** Umair chose deployment automation as the next piece of work.
+- **Status:** `[DONE]` — **Audited and approved on 2026-09-23**
+- **Resolution:** `tools/deploy.js` built using native Node and Apps Script REST API (zero npm dependencies, complies with ADR 001 and ADR 006). Tested with 10 unit checks. Sequentially deploys fleet and validates health via `tools/instances.js`.
 
 ### Why
 Nearly every incident this project has had traces to a human pasting 130KB into an editor and

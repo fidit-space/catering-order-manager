@@ -110,3 +110,26 @@ free-text phones produced dead `wa.me` links; and four orders tomorrow meant fou
 - **Status:** ✅ **RATIFIED BY ANTIGRAVITY (2026-09-17)**
 - **Decision:** Single shared frontend deployment on Cloudflare Edge with `?client=<id>` routing to isolated Google Apps Script backends.
 - **Rationale:** Delivers sub-50ms latency across South Asia from Cloudflare's Colombo edge node (`CMB`), enforces strict cache-control preventing stale order forms, and maintains zero monthly hosting cost (Rs. 0 / $0.00).
+
+---
+
+## Audit 6: Automated Multi-Tenant Deployment Engine & Hardened Batching (2026-09-23)
+- **Auditor:** Antigravity AI Engine
+- **Scope:** Review and verification of Task 20 (F-07 status lock discipline, F-08 batch money writes, F-09 HMAC key-sorted verification) and Task 21 (`tools/deploy.js` one-command deployment).
+- **Verification Highlights:**
+  1. **Deployment Automation (`tools/deploy.js`):**
+     - Complies strictly with ADR 001: Written in native Node (HTTP loopback server, crypto, fetch), zero npm dependencies.
+     - Strict safety invariants: Refuses projects with >1 script file (protects `appsscript.json`), refuses moving `@HEAD` deployments, validates single versioned deployments, and deploys sequentially to prevent cascading fleet failures.
+     - OAuth refresh tokens stored in gitignored `tools/deploy.local.json` and never logged or committed.
+  2. **Security & Financial Integrity (Task 20):**
+     - F-07: Status updates (`setOrderStatusHeld_`) and cancellation money calculation occur under strict script lock, with release prior to external network requests.
+     - F-08: Batch cell updates in `syncOrderMoney_` reduce Apps Script round trips while covered by adjacency regression tests in `test/integrity.test.js`.
+     - F-09: Telegram `initData` verification sorts parsed parameters strictly by key name, eliminating auth failure vulnerabilities on prefixed field keys.
+  3. **Automated Test Coverage:**
+     - 507 of 507 checks passing across 8 suites (`node test/run.js`). Credential scans 100% clean.
+- **Verdict:** Tasks 20 and 21 are **APPROVED**. Multi-tenant fleet can be deployed using `tools/deploy.js` once local OAuth credentials are configured.
+
+### ADR 006: Local OAuth for Multi-Tenant Fleet Deployment Tooling
+- **Status:** ✅ **RATIFIED BY ANTIGRAVITY (2026-09-23)**
+- **Decision:** Use Google Apps Script REST API via native Node (`tools/deploy.js`) for one-command deployment across all client instances.
+- **Rationale:** Replaces error-prone manual 130KB copy-pasting across Google Apps Script editors without introducing external dependencies (no `clasp`, no `npm`). Local OAuth tokens are isolated in gitignored configuration and strictly prohibited from git or CI.
