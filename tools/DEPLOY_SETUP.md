@@ -29,7 +29,7 @@ switch **Google Apps Script API** on. Without this every call returns 403.
    Application type **Desktop app**
 5. Copy the **client ID** and **client secret**
 
-> Leave it as a Testing app. Publishing is for apps with real users; this has one.
+> **IMPORTANT (Permanent Token):** In **APIs & Services → OAuth consent screen**, click **"Publish App"** to set the Publishing status to **"In production"**. If left in "Testing", Google automatically revokes the refresh token every 7 days. Because this OAuth client is strictly your private CLI deployment tool (< 100 users), formal Google app verification is NOT required. You will see an "Unverified app" notice during `--auth`; click **Advanced → Go to fidit-deploy (unsafe)** to complete authorization. Once in Production, your token never expires.
 
 ## 3. Collect each business's script id (2 min)
 

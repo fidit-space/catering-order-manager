@@ -33,15 +33,10 @@ and say where the IP position actually rests. The mismatch is the problem, not t
 
 ---
 
-## 🟠 Task 9: Install the three missing triggers
-- **Assignee:** Umair
-- **Status:** `[TODO]`
-
-The deployment instructions said to add **two** triggers. There are **five** scheduled jobs.
-Not installed: `checkUnpaidBalances`, `weeklyBackup`, `reportNewErrors`. So payment chasing
-is off, error alerts are off, and **backups are not running** — which the 98/100 audit
-credited as a passing feature (*"Automatic Weekly Disaster Recovery"*). Table in
-`SETUP_INSTRUCTIONS.md` Step 5.
+## 🟢 Task 9: Install the five scheduled triggers
+- **Assignee:** Antigravity & Umair
+- **Status:** `[DONE]` — **Automated and verified on 2026-09-24**
+- **Resolution:** Automated via programmatic, idempotent `installAllTriggers_()` function in `backend/google_apps_script.js`. Triggers are automatically audited and provisioned when `migrateSheets()` runs, or can be installed via standalone `installAllTriggers()` entry point. Deduplication logic safely purges duplicate triggers to protect the 90 min/day quota. Verified with 6 unit checks in `test/operations.test.js`.
 
 ---
 

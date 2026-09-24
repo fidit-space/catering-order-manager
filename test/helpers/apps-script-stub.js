@@ -162,8 +162,32 @@ global.INSTALLED_TRIGGERS = [
   'weeklyBackup', 'reportNewErrors'
 ];
 global.ScriptApp = {
+  WeekDay: { MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4, FRIDAY: 5, SATURDAY: 6, SUNDAY: 7 },
   getService: () => ({ getUrl: () => global.SCRIPT_URL }),
-  getProjectTriggers: () => global.INSTALLED_TRIGGERS.map(fn => ({ getHandlerFunction: () => fn }))
+  getProjectTriggers: () => global.INSTALLED_TRIGGERS.map((fn, idx) => ({
+    _idx: idx,
+    getHandlerFunction: () => fn
+  })),
+  deleteTrigger: (t) => {
+    const fn = t.getHandlerFunction();
+    const idx = global.INSTALLED_TRIGGERS.indexOf(fn);
+    if (idx !== -1) global.INSTALLED_TRIGGERS.splice(idx, 1);
+  },
+  newTrigger: (fn) => {
+    const builder = {
+      timeBased: () => builder,
+      everyMinutes: () => builder,
+      everyDays: () => builder,
+      atHour: () => builder,
+      inTimezone: () => builder,
+      onWeekDay: () => builder,
+      create: () => {
+        global.INSTALLED_TRIGGERS.push(fn);
+        return { getHandlerFunction: () => fn };
+      }
+    };
+    return builder;
+  }
 };
 
 // ---- Fake Spreadsheet ----

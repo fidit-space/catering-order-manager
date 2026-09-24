@@ -42,7 +42,7 @@ var DEPLOYMENT_URL =
  * already lost days to a deployment quietly serving an old version. /status
  * prints this, so the answer takes five seconds.
  */
-var VERSION = '2026-09-18.3';
+var VERSION = '2026-09-24.1';
 
 var TZ = 'Asia/Colombo';          // Business timezone (UTC+05:30, no DST)
 var CURRENCY = 'Rs.';             // Displayed in Telegram messages
@@ -1785,6 +1785,7 @@ function migrateSheets_() {
     changes = changes.concat(backfillOpeningBalances_());
     changes = changes.concat(repairOpeningBalanceDates_());
     changes = changes.concat(backfillOrderCosts_());
+    changes = changes.concat(installAllTriggers_());
 
     settingsSheet_();
     ledgerSheet_();
@@ -1802,6 +1803,74 @@ function migrateSheets() {
   var summary = migrateSheets_();
   Logger.log(summary);
   return summary;
+}
+
+/**
+ * Programmatically ensures all 5 time-driven background jobs are installed.
+ * Idempotent: deletes duplicate or stale triggers before creating missing ones.
+ */
+function installAllTriggers_() {
+  var existing = [];
+  try {
+    existing = ScriptApp.getProjectTriggers();
+  } catch (e) {
+    return ['Could not read triggers: ' + e.message];
+  }
+
+  var installed = {};
+  var deleted = 0;
+
+  existing.forEach(function (t) {
+    var fn = t.getHandlerFunction();
+    if (installed[fn]) {
+      try {
+        ScriptApp.deleteTrigger(t);
+        deleted++;
+      } catch (err) {}
+    } else {
+      installed[fn] = true;
+    }
+  });
+
+  var created = [];
+
+  try {
+    if (!installed['checkDispatchAlerts']) {
+      ScriptApp.newTrigger('checkDispatchAlerts').timeBased().everyMinutes(15).create();
+      created.push('checkDispatchAlerts (every 15 min)');
+    }
+    if (!installed['sendDailyPrepDigest']) {
+      ScriptApp.newTrigger('sendDailyPrepDigest').timeBased().atHour(20).everyDays(1).inTimezone(TZ).create();
+      created.push('sendDailyPrepDigest (daily 20:00)');
+    }
+    if (!installed['checkUnpaidBalances']) {
+      ScriptApp.newTrigger('checkUnpaidBalances').timeBased().atHour(9).everyDays(1).inTimezone(TZ).create();
+      created.push('checkUnpaidBalances (daily 09:00)');
+    }
+    if (!installed['weeklyBackup']) {
+      ScriptApp.newTrigger('weeklyBackup').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(6).inTimezone(TZ).create();
+      created.push('weeklyBackup (Mondays 06:00)');
+    }
+    if (!installed['reportNewErrors']) {
+      ScriptApp.newTrigger('reportNewErrors').timeBased().atHour(7).everyDays(1).inTimezone(TZ).create();
+      created.push('reportNewErrors (daily 07:00)');
+    }
+  } catch (e) {
+    created.push('Trigger setup error: ' + e.message);
+  }
+
+  var msg = [];
+  if (deleted > 0) msg.push('Removed ' + deleted + ' duplicate trigger(s)');
+  if (created.length > 0) msg.push('Installed triggers: ' + created.join(', '));
+  return msg;
+}
+
+/** Public entry point to install all triggers from the Apps Script editor */
+function installAllTriggers() {
+  var res = installAllTriggers_();
+  var logMsg = res.length ? res.join('\n') : 'All 5 scheduled triggers already active.';
+  Logger.log(logMsg);
+  return logMsg;
 }
 
 /** Brings the Orders header row up to the current schema. */

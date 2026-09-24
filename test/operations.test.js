@@ -493,6 +493,21 @@ module.exports = function (t) {
     /MISSING weeklyBackup/.test(gappy) && /MISSING reportNewErrors/.test(gappy),
     gappy.split('TRIGGERS')[1] ? gappy.split('TRIGGERS')[1].slice(0, 160) : gappy.slice(0, 120));
   t.check('and an installed one is not', /OK\s+checkDispatchAlerts/.test(gappy));
-  global.INSTALLED_TRIGGERS = allTriggers;
+  t.section('Idempotent trigger automation (installAllTriggers)');
+  // Start with only 1 trigger and 1 duplicate
+  global.INSTALLED_TRIGGERS = ['checkDispatchAlerts', 'checkDispatchAlerts'];
+  const installResult = installAllTriggers_();
+  t.check('duplicate trigger was removed', installResult.some(m => /Removed 1 duplicate/.test(m)), JSON.stringify(installResult));
+  t.check('missing triggers were installed', installResult.some(m => /Installed triggers:.*sendDailyPrepDigest/.test(m)), JSON.stringify(installResult));
+  t.check('all 5 triggers are now present',
+    ['checkDispatchAlerts', 'sendDailyPrepDigest', 'checkUnpaidBalances', 'weeklyBackup', 'reportNewErrors']
+      .every(fn => global.INSTALLED_TRIGGERS.includes(fn)));
+  t.check('total installed count is exactly 5', global.INSTALLED_TRIGGERS.length === 5, String(global.INSTALLED_TRIGGERS.length));
 
+  // Running it a second time is an idempotent no-op
+  const secondRun = installAllTriggers_();
+  t.check('second run reports zero changes', secondRun.length === 0, JSON.stringify(secondRun));
+  t.check('public entry point reports active', installAllTriggers().includes('already active'));
+
+  global.INSTALLED_TRIGGERS = allTriggers;
 };

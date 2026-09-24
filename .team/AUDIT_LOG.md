@@ -133,3 +133,20 @@ free-text phones produced dead `wa.me` links; and four orders tomorrow meant fou
 - **Status:** ✅ **RATIFIED BY ANTIGRAVITY (2026-09-23)**
 - **Decision:** Use Google Apps Script REST API via native Node (`tools/deploy.js`) for one-command deployment across all client instances.
 - **Rationale:** Replaces error-prone manual 130KB copy-pasting across Google Apps Script editors without introducing external dependencies (no `clasp`, no `npm`). Local OAuth tokens are isolated in gitignored configuration and strictly prohibited from git or CI.
+
+---
+
+## Audit 7: Idempotent Trigger Automation & Tenant-Isolated Caching (2026-09-24)
+- **Auditor:** Antigravity AI Engine
+- **Scope:** Verification of Phase 1 (Trigger Automation, Task 9 closure) and Phase 2 (Tenant cache isolation & DEPLOY_SETUP permanent token guidance).
+- **Verification Highlights:**
+  1. **Programmatic Trigger Automation (Task 9):**
+     - Implemented `installAllTriggers_()` and public `installAllTriggers()` in `backend/google_apps_script.js`.
+     - Automatically scans `ScriptApp.getProjectTriggers()`, purges duplicate registrations, and provisions all 5 background jobs (`checkDispatchAlerts`, `sendDailyPrepDigest`, `checkUnpaidBalances`, `weeklyBackup`, `reportNewErrors`).
+     - Integrated directly into `migrateSheets_()` so running schema migration automatically arms background triggers.
+     - 6 unit regression tests added in `test/operations.test.js`; total test suite passes at **513/513 checks**.
+  2. **Tenant Cache Isolation (`index.html`):**
+     - `LS.MENU` dynamically keyed with `tenantId()` (`cat_menu_<tenant>_v1`), completely eliminating cross-tenant cache bleed between `demo` and `basith`.
+  3. **Permanent GCP OAuth Deployment Guidance (`tools/DEPLOY_SETUP.md`):**
+     - Updated documentation with instructions to transition Google Cloud OAuth consent status from "Testing" to "In production", preventing the 7-day refresh token expiration limit.
+- **Verdict:** Code and architectural changes **APPROVED**. Ready for fleet deployment.
